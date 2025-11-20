@@ -403,11 +403,13 @@ class AudioProcessor:
             logger.debug(f"FFmpeg segment command: {' '.join(cmd)}")
             
             # Execute extraction
+            # Timeout increased to 10 minutes to support large chunk extraction (60-minute chunks)
+            # For 60-minute audio chunks, FFmpeg needs more time to process
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=60
+                timeout=600  # 10 minutes for large chunk extraction
             )
             
             if result.returncode == 0 and output_path.exists():

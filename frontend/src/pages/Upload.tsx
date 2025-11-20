@@ -973,7 +973,7 @@ const Capture: React.FC<CaptureProps> = ({ onNavigate }) => {
             </div>
             <div className="flex items-start gap-3">
               <span className="text-xl">💾</span>
-              <p><strong>Maximum file size:</strong> 100MB</p>
+              <p><strong>Maximum file size:</strong> 10GB</p>
             </div>
             <div className="flex items-start gap-3">
               <span className="text-xl">⚡</span>

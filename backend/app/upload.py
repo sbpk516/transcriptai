@@ -33,6 +33,10 @@ except ImportError:
 # Allowed audio file extensions
 ALLOWED_AUDIO_EXTENSIONS = [".wav", ".mp3", ".m4a", ".flac", ".ogg", ".aac"]
 
+# Chunk size for streaming large file uploads (8 MB)
+# This prevents loading entire large files into memory
+CHUNK_SIZE = 8 * 1024 * 1024  # 8 MB
+
 class AudioUploadHandler:
     """
     Handles audio file uploads with comprehensive validation and logging.
@@ -126,17 +130,52 @@ class AudioUploadHandler:
         logger.info(f"Saving file to: {file_path}")
         
         try:
-            # Read file content
-            content = await file.read()
+            # Use chunked streaming to avoid loading entire file into memory
+            # This is critical for large files (e.g., 10GB files)
+            total_bytes_written = 0
+            chunk_count = 0
+            last_logged_mb = 0  # Track last logged milestone for progress reporting
             
-            # Save file asynchronously
             async with aiofiles.open(file_path, 'wb') as f:
-                await f.write(content)
+                while True:
+                    # Read chunk from upload stream (up to CHUNK_SIZE bytes)
+                    chunk = await file.read(CHUNK_SIZE)
+                    
+                    # Empty chunk indicates end of file
+                    if not chunk:
+                        break
+                    
+                    # Write chunk to disk immediately
+                    await f.write(chunk)
+                    
+                    # Track progress for logging
+                    total_bytes_written += len(chunk)
+                    chunk_count += 1
+                    
+                    # Log progress for large files (every 100MB)
+                    current_mb = total_bytes_written // (100 * 1024 * 1024)
+                    if current_mb > last_logged_mb:
+                        last_logged_mb = current_mb
+                        logger.debug(
+                            f"Upload progress: {total_bytes_written / (1024 * 1024):.2f} MB "
+                            f"written ({chunk_count} chunks)"
+                        )
             
-            logger.info(f"File saved successfully: {file_path}")
+            logger.info(
+                f"File saved successfully: {file_path} "
+                f"({total_bytes_written / (1024 * 1024):.2f} MB, {chunk_count} chunks)"
+            )
             return str(file_path)
             
         except Exception as e:
+            # Clean up partial file if write failed
+            if file_path.exists():
+                try:
+                    file_path.unlink()
+                    logger.warning(f"Removed partial file after upload failure: {file_path}")
+                except OSError as cleanup_error:
+                    logger.error(f"Failed to clean up partial file {file_path}: {cleanup_error}")
+            
             logger.error(f"Failed to save file: {e}")
             debug_helper.capture_exception(
                 "save_audio_file",

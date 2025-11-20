@@ -544,6 +544,17 @@ class WhisperProcessor:
     ) -> Generator[Dict[str, Any], None, Dict[str, Any]]:
         """
         Progressive transcription: yields partial text per chunk and returns a final summary.
+        
+        Note: Default chunk_sec=15 is for backward compatibility. In production, 
+        larger chunks (e.g., 3600 seconds = 60 minutes) are typically used for better 
+        performance with large files.
+
+        Args:
+            audio_path: Path to audio file to transcribe
+            chunk_sec: Duration of each chunk in seconds (default: 15, typical: 3600 for large files)
+            stride_sec: Overlap between chunks in seconds (default: 5, typical: 60 for large files)
+            language: Language code (e.g., 'en', 'es') or None for auto-detection
+            task: Task type ('transcribe' or 'translate')
 
         Yields:
             {"chunk_index", "start_sec", "end_sec", "text"}
@@ -570,6 +581,9 @@ class WhisperProcessor:
         idx = 0
         start = 0.0
         final_text_parts: List[str] = []
+        detected_language = None  # Will be set from first chunk
+        chunk_files_to_cleanup: List[str] = []  # Track files for cleanup
+        
         options: Dict[str, Any] = {
             "task": task,
             "verbose": False,
@@ -583,48 +597,86 @@ class WhisperProcessor:
         if lang_to_use:
             options["language"] = lang_to_use
 
-        while True:
-            end = start + float(chunk_sec)
-            # Guard last chunk if total is known
-            duration = float(chunk_sec)
-            if total_duration and end > total_duration + 0.25:
-                # No more audio expected
-                break
-            # Extract segment
-            seg = audio_processor.extract_audio_segment(audio_path, start_time=start, duration=duration, output_format="wav")
-            if not seg.get("extraction_success"):
-                logger.warning(f"Chunk extraction failed at {start}s: {seg.get('error')}")
-                break
-            seg_path = seg["output_path"]
-            # Transcribe segment
-            try:
-                result = self.model.transcribe(seg_path, **options)
-                text = (result.get("text") or "").strip()
-            except Exception as e:
-                debug_helper.capture_exception("whisper_chunk_transcription", e, {"start": start, "duration": duration})
-                text = ""
+        try:
+            while True:
+                end = start + float(chunk_sec)
+                # Guard last chunk if total is known
+                duration = float(chunk_sec)
+                if total_duration and end > total_duration + 0.25:
+                    # No more audio expected
+                    break
+                # Extract segment
+                seg = audio_processor.extract_audio_segment(audio_path, start_time=start, duration=duration, output_format="wav")
+                if not seg.get("extraction_success"):
+                    logger.warning(f"Chunk extraction failed at {start}s: {seg.get('error')}. Continuing with next chunk.")
+                    # Continue with next chunk instead of breaking
+                    start += max(0.1, float(chunk_sec - stride_sec))
+                    if total_duration and start >= total_duration:
+                        break
+                    continue
+                
+                seg_path = seg["output_path"]
+                chunk_files_to_cleanup.append(seg_path)  # Track for cleanup
+                
+                # Transcribe segment
+                try:
+                    result = self.model.transcribe(seg_path, **options)
+                    text = (result.get("text") or "").strip()
+                    
+                    # Detect language from first chunk if not already set
+                    if detected_language is None and result.get("language"):
+                        detected_language = result.get("language")
+                        # Update options to use detected language for subsequent chunks
+                        if not lang_to_use:  # Only if language wasn't forced
+                            options["language"] = detected_language
+                            logger.info(f"Language detected from first chunk: {detected_language}. Using for subsequent chunks.")
+                    
+                except Exception as e:
+                    logger.error(f"Chunk transcription failed at {start}s: {e}. Continuing with next chunk.")
+                    debug_helper.capture_exception("whisper_chunk_transcription", e, {"start": start, "duration": duration})
+                    text = ""
+                    # Continue with next chunk instead of breaking
+                    start += max(0.1, float(chunk_sec - stride_sec))
+                    if total_duration and start >= total_duration:
+                        break
+                    continue
 
-            yield {
-                "chunk_index": idx,
-                "start_sec": round(start, 3),
-                "end_sec": round(start + duration, 3),
-                "text": text,
-            }
-            if text:
-                final_text_parts.append(text)
+                yield {
+                    "chunk_index": idx,
+                    "start_sec": round(start, 3),
+                    "end_sec": round(start + duration, 3),
+                    "text": text,
+                }
+                if text:
+                    final_text_parts.append(text)
 
-            idx += 1
-            # Advance with stride (overlap = chunk - stride)
-            start += max(0.1, float(chunk_sec - stride_sec))
-            if total_duration and start >= total_duration:
-                break
+                idx += 1
+                # Advance with stride (overlap = chunk - stride)
+                start += max(0.1, float(chunk_sec - stride_sec))
+                if total_duration and start >= total_duration:
+                    break
+        finally:
+            # Clean up extracted chunk files - always execute, even if transcription is interrupted
+            cleanup_count = 0
+            for chunk_file in chunk_files_to_cleanup:
+                try:
+                    if os.path.exists(chunk_file):
+                        os.remove(chunk_file)
+                        cleanup_count += 1
+                except Exception as e:
+                    logger.warning(f"Failed to cleanup chunk file {chunk_file}: {e}")
+            
+            if cleanup_count > 0:
+                logger.info(f"Cleaned up {cleanup_count} chunk file(s) after transcription")
 
         final_text = " ".join(final_text_parts).strip()
+        # Use detected language if available, otherwise fall back to provided or unknown
+        final_language = detected_language or language or "unknown"
         summary = {
             "audio_path": audio_path,
             "transcription_success": True,
             "text": final_text,
-            "language": language or "unknown",
+            "language": final_language,
             "transcription_timestamp": datetime.now().isoformat(),
             "model_used": self.model_name,
             "device_used": self.device,

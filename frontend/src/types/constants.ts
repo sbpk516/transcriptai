@@ -24,7 +24,7 @@ export const API_ENDPOINTS = {
 
 // File Upload Configuration
 export const FILE_UPLOAD_CONFIG = {
-  MAX_FILE_SIZE: 50 * 1024 * 1024, // 50MB
+  MAX_FILE_SIZE: 10 * 1024 * 1024 * 1024, // 10GB
   ACCEPTED_TYPES: [
     'audio/wav',
     'audio/mp3', 
@@ -82,7 +82,7 @@ export const SENTIMENT_COLORS = {
 
 // Error Messages
 export const ERROR_MESSAGES = {
-  FILE_TOO_LARGE: 'File size exceeds the maximum limit of 50MB',
+  FILE_TOO_LARGE: 'File size exceeds the maximum limit of 10GB',
   INVALID_FILE_TYPE: 'Please select a valid audio file (WAV, MP3, M4A, AIFF)',
   UPLOAD_FAILED: 'Failed to upload file. Please try again.',
   PROCESSING_FAILED: 'Audio processing failed. Please try again.',

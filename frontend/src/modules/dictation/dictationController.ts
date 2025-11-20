@@ -116,6 +116,7 @@ export function useDictationController(): DictationControllerState {
   const waitingForPermissionRef = useRef(false)
   const recordingStartInFlightRef = useRef(false)
   const notificationTimersRef = useRef<Map<string, number>>(new Map())
+  const lastInsertedTranscriptRef = useRef<string | null>(null)
   const [notifications, setNotifications] = useState<DictationNotification[]>([])
   const [safeMode, setSafeMode] = useState<SafeModeState>({
     engaged: false,
@@ -582,22 +583,38 @@ export function useDictationController(): DictationControllerState {
             }
             log('debug', 'dictation transcript received', { transcript })
             const expectedTarget = releaseTargetRef.current ?? null
+            
+            // Guard against duplicate processing of the same transcript
+            if (lastInsertedTranscriptRef.current === transcript) {
+              log('warn', 'dictation transcript already processed, skipping duplicate', { transcript })
+              return
+            }
+            
             void insertDictationText(transcript, {
               expectedTarget,
               allowBridge: false,
               allowClipboard: false,
             }).then(outcome => {
               log('debug', 'dictation text inserted', outcome)
+              // If insertion succeeded, mark as processed and do not call fallback
               if (outcome.ok) {
+                lastInsertedTranscriptRef.current = transcript
+                log('debug', 'dictation text insertion succeeded, skipping fallback', { method: outcome.method })
                 return
               }
-              if (!outcome.ok && outcome.reason === 'target_mismatch') {
-                log('info', 'dictation insertion skipped – target changed before insert')
-              }
-              if (outcome.reason === 'target_mismatch' || outcome.reason === 'no_target') {
+              // Only use fallback for specific failure reasons where no insertion occurred
+              if (outcome.reason === 'target_mismatch') {
+                log('info', 'dictation insertion skipped – target changed before insert, using fallback')
+                lastInsertedTranscriptRef.current = transcript
+                requestAutoPaste(transcript)
+              } else if (outcome.reason === 'no_target') {
+                log('info', 'dictation insertion skipped – no target available, using fallback')
+                lastInsertedTranscriptRef.current = transcript
                 requestAutoPaste(transcript)
               } else {
-                log('debug', 'dictation auto paste skipped – reason not eligible', { reason: outcome.reason })
+                // For other failure reasons (bridge_failed, clipboard_failed), do not retry
+                // as these indicate the fallback methods also failed
+                log('debug', 'dictation auto paste skipped – insertion failed with non-fallback reason', { reason: outcome.reason })
               }
             })
             releaseTargetRef.current = null
@@ -872,6 +889,7 @@ export function useDictationController(): DictationControllerState {
         pendingPressRef.current = payload
         waitingForPermissionRef.current = true
         releaseTargetRef.current = null
+        lastInsertedTranscriptRef.current = null // Clear previous transcript to allow new recording
         setState(prev => ({ ...prev, status: 'recording', error: null }))
         if (safeMode.engaged) {
           resetSafeModeState()

@@ -459,38 +459,66 @@ class AudioProcessingPipeline:
             if live_enabled and not batch_only:
                 # Chunked progressive transcription with SSE emits
                 import os
-                chunk_sec = int(os.getenv("SIGNALHUB_LIVE_CHUNK_SEC", "15") or 15)
-                stride_sec = int(os.getenv("SIGNALHUB_LIVE_STRIDE_SEC", "5") or 5)
+                chunk_sec = int(os.getenv("SIGNALHUB_LIVE_CHUNK_SEC", "3600") or 3600)  # 60 minutes default
+                stride_sec = int(os.getenv("SIGNALHUB_LIVE_STRIDE_SEC", "60") or 60)  # 1 minute overlap (1.7% overlap)
                 final_parts: List[str] = []
 
                 def _do_chunked():
-                    for part in self.whisper_processor.transcribe_in_chunks(audio_path, chunk_sec=chunk_sec, stride_sec=stride_sec):
-                        # Emit partial
-                        try:
-                            # Add call_id for client convenience
-                            payload = dict(part)
-                            payload["call_id"] = call_id
-                            payload["type"] = "partial"
-                            # Publish but don't await inside tight loop; event_bus.publish is async
-                            # We will schedule and wait inline via asyncio
-                            import asyncio
-                            asyncio.get_event_loop().create_task(event_bus.publish(call_id, payload))
-                        except Exception as e:
-                            logger.warning(f"Failed to publish SSE partial for {call_id}: {e}")
-                        if part.get("text"):
-                            final_parts.append(part["text"]) 
-                    # After loop completes, send complete
-                    import asyncio
-                    asyncio.get_event_loop().create_task(event_bus.complete(call_id))
-                    return {
-                        "audio_path": audio_path,
-                        "transcription_success": True,
-                        "text": " ".join(final_parts).strip(),
-                        "language": "unknown",
-                        "transcription_timestamp": datetime.now().isoformat(),
-                        "model_used": self.whisper_processor.model_name,
-                        "device_used": self.whisper_processor.device,
-                    }
+                    generator = self.whisper_processor.transcribe_in_chunks(audio_path, chunk_sec=chunk_sec, stride_sec=stride_sec)
+                    final_summary = None
+                    
+                    try:
+                        while True:
+                            part = next(generator)
+                            # Emit partial only if live transcription is enabled
+                            if live_enabled and not batch_only:
+                                try:
+                                    # Add call_id for client convenience
+                                    payload = dict(part)
+                                    payload["call_id"] = call_id
+                                    payload["type"] = "partial"
+                                    # Publish but don't await inside tight loop; event_bus.publish is async
+                                    # We will schedule and wait inline via asyncio
+                                    import asyncio
+                                    asyncio.get_event_loop().create_task(event_bus.publish(call_id, payload))
+                                except Exception as e:
+                                    logger.warning(f"Failed to publish SSE partial for {call_id}: {e}")
+                            if part.get("text"):
+                                final_parts.append(part["text"])
+                    except StopIteration as e:
+                        # Capture the final summary returned by the generator
+                        final_summary = e.value
+                    
+                    # After loop completes, send complete only if live transcription enabled
+                    if live_enabled and not batch_only:
+                        import asyncio
+                        asyncio.get_event_loop().create_task(event_bus.complete(call_id))
+                    
+                    # Use final_summary if available, otherwise construct from parts
+                    if final_summary:
+                        # Merge summary metadata with text
+                        # Prefer final_summary text (authoritative from generator) over final_parts
+                        # Use final_parts only as fallback if summary text is missing
+                        summary_text = final_summary.get("text", "").strip()
+                        if not summary_text and final_parts:
+                            # Fallback to collected parts if summary text is empty
+                            summary_text = " ".join(final_parts).strip()
+                        
+                        return {
+                            **final_summary,
+                            "text": summary_text,
+                        }
+                    else:
+                        # Fallback if generator didn't return summary
+                        return {
+                            "audio_path": audio_path,
+                            "transcription_success": True,
+                            "text": " ".join(final_parts).strip(),
+                            "language": "unknown",
+                            "transcription_timestamp": datetime.now().isoformat(),
+                            "model_used": self.whisper_processor.model_name,
+                            "device_used": self.whisper_processor.device,
+                        }
 
                 transcription_result = await self._retry_operation(
                     _do_chunked,

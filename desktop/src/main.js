@@ -230,6 +230,8 @@ async function startBackendDev() {
     // Enable MLX-accelerated Whisper (3.25x faster on Apple Silicon)
     SIGNALHUB_USE_MLX: '1',
     SIGNALHUB_MLX_VENV: mlxVenvDev,
+    // File upload size limit (10 GB = 10737418240 bytes)
+    MAX_FILE_SIZE: '10737418240',
   }
   const cwd = path.join(__dirname, '..', '..', 'backend')
   const args = ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', String(port)]
@@ -271,6 +273,8 @@ async function startBackendProd() {
     // Enable MLX-accelerated Whisper (3.25x faster on Apple Silicon)
     SIGNALHUB_USE_MLX: '1',
     SIGNALHUB_MLX_VENV: resourcesVenv,
+    // File upload size limit (10 GB = 10737418240 bytes)
+    MAX_FILE_SIZE: '10737418240',
   }
   const binName = process.platform === 'win32' ? 'signalhub-backend.exe' : 'signalhub-backend'
   const binPath = path.join(process.resourcesPath, 'backend', binName)

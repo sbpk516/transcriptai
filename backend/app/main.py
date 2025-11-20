@@ -71,7 +71,8 @@ app = FastAPI(
     title=settings.project_name,
     description="Real-time call intelligence platform",
     version="1.0.0",
-    debug=settings.debug
+    debug=settings.debug,
+    max_request_size=settings.max_file_size_bytes,
 )
 
 app.include_router(dictation_router, prefix="/api/v1")
@@ -313,7 +314,7 @@ async def upload_endpoint(file: UploadFile = File(...)):
     
     This endpoint accepts audio files and stores them for processing.
     Supported formats: WAV, MP3, M4A, FLAC, OGG, AAC
-    Maximum file size: 100MB
+    Maximum file size: 10GB
     """
     return await upload_audio_file(file)
 

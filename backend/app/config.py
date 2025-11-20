@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     backend_cors_origins: List[str] = ["http://localhost:3000", "http://localhost:8080"]
     
     # File Upload Configuration
-    max_file_size: Union[int, str] = 100 * 1024 * 1024  # 100MB in bytes
+    max_file_size: Union[int, str] = 10 * 1024 * 1024 * 1024  # 10GB in bytes
     upload_dir: str = "../audio_uploads"  # Overridden in desktop mode
     
     # Feature Flags
@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     def max_file_size_bytes(self) -> int:
         """Convert max_file_size to bytes if it's a string."""
         if isinstance(self.max_file_size, str):
-            # Handle string format like "100MB"
+            # Handle string format like "10GB"
             size_str = self.max_file_size.upper()
             if size_str.endswith('MB'):
                 return int(size_str[:-2]) * 1024 * 1024

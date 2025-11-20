@@ -4,6 +4,8 @@ import type {
   PipelineStatus,
 } from '../../types/api'
 
+const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024 * 1024 // 10GB
+
 /**
  * Upload API Service
  * Handles all operations related to audio file uploads
@@ -152,10 +154,13 @@ export const cancelUpload = async (uploadId: string): Promise<void> => {
 export const validateFile = (file: File): { isValid: boolean; errors: string[] } => {
   const errors: string[] = []
   
-  // Check file size (100MB limit)
-  const maxSize = 100 * 1024 * 1024 // 100MB in bytes
-  if (file.size > maxSize) {
-    errors.push(`File size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds 100MB limit`)
+  // Check file size (10GB limit)
+  if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+    const maxInGb = (MAX_UPLOAD_SIZE_BYTES / 1024 / 1024 / 1024).toFixed(0)
+    const actualSize = file.size >= 1024 * 1024 * 1024
+      ? `${(file.size / 1024 / 1024 / 1024).toFixed(2)}GB`
+      : `${(file.size / 1024 / 1024).toFixed(2)}MB`
+    errors.push(`File size (${actualSize}) exceeds ${maxInGb}GB limit`)
   }
   
   // Check file type
@@ -186,7 +191,7 @@ export const getSupportedFileTypes = (): string[] => {
  * Get maximum file size in bytes
  */
 export const getMaxFileSize = (): number => {
-  return 100 * 1024 * 1024 // 100MB
+  return MAX_UPLOAD_SIZE_BYTES
 }
 
 /**

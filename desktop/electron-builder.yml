@@ -17,17 +17,34 @@ extraResources:
   # Include MLX virtual environment (Option A packaging)
   - from: ../venv_mlx
     to: venv_mlx
-  # Include Whisper model cache for offline transcription
-  - from: ../backend/whisper_cache
-    to: whisper_cache
+    filter:
+      - "**/*"
+      - "!**/__pycache__/**"
+      - "!**/*.pyc"
+      - "!**/*.pyo"
+      - "!**/tests/**"
+      - "!**/test/**"
+      - "!**/*.tests/**"
+      - "!**/*.md"
+      - "!**/*.rst"
+      - "!**/.git/**"
+      - "!**/*.dist-info/**"
+  # Include Whisper model cache for offline transcription (only tiny.pt)
+  - from: ../backend/whisper_cache/whisper
+    to: whisper_cache/whisper
+    filter:
+      - "tiny.pt"
   # Include native helper for global key listener (macOS)
   - from: node_modules/node-global-key-listener/bin
     to: bin
 mac:
-  target: [zip]
+  target: [dmg]
   category: public.app-category.productivity
+  compression: maximum
 win:
   target: [nsis]
+  compression: maximum
+asar: true
 publish:
   provider: github
   owner: sbpk516

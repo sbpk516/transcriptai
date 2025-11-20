@@ -40,17 +40,39 @@ fi
 if [[ ! -x "$MLX_VENV/bin/python" ]]; then
   fail "venv_mlx/bin/python missing. Recreate MLX venv: bash scripts/build-mlx-venv.sh"
 fi
+
+# Cleanup venv_mlx to reduce size before packaging
+echo "[prepack] Cleaning up venv_mlx to reduce package size..."
+if [[ -f "$ROOT_DIR/scripts/cleanup-mlx-venv.sh" ]]; then
+  bash "$ROOT_DIR/scripts/cleanup-mlx-venv.sh" || warn "venv_mlx cleanup had warnings (continuing)"
+else
+  warn "cleanup-mlx-venv.sh not found, skipping cleanup"
+fi
+
+# Check venv_mlx size (should be under 300M after cleanup)
+VENV_SIZE_MB=$(du -sm "$MLX_VENV" | cut -f1)
+if [[ $VENV_SIZE_MB -gt 300 ]]; then
+  warn "venv_mlx size is ${VENV_SIZE_MB}M (target: <300M). Consider running cleanup-mlx-venv.sh"
+else
+  ok "venv_mlx size: ${VENV_SIZE_MB}M (under 300M threshold)"
+fi
+
 if ! "$MLX_VENV/bin/python" -c "import mlx, mlx_whisper" >/dev/null 2>&1; then
   fail "venv_mlx is missing mlx packages. Recreate with: bash scripts/build-mlx-venv.sh"
 else
   ok "MLX virtual environment ready (imports mlx, mlx_whisper)"
 fi
 
-# 3) Whisper model present for offline transcription
-if ! ls "$ROOT_DIR"/backend/whisper_cache/whisper/*.pt >/dev/null 2>&1; then
-  fail "No Whisper model found under backend/whisper_cache/whisper/*.pt. Place base.pt or tiny.pt there."
+# 3) Whisper model present for offline transcription (only tiny.pt required)
+if [[ ! -f "$ROOT_DIR/backend/whisper_cache/whisper/tiny.pt" ]]; then
+  fail "tiny.pt model not found at backend/whisper_cache/whisper/tiny.pt. This is required for offline transcription."
 else
-  ok "Whisper model present in backend/whisper_cache"
+  TINY_SIZE_MB=$(du -sm "$ROOT_DIR/backend/whisper_cache/whisper/tiny.pt" | cut -f1)
+  ok "Whisper tiny.pt model present (${TINY_SIZE_MB}M)"
+  # Warn if base.pt is present (will be excluded from package)
+  if [[ -f "$ROOT_DIR/backend/whisper_cache/whisper/base.pt" ]]; then
+    warn "base.pt found but will be excluded from package (only tiny.pt is bundled)"
+  fi
 fi
 
 # 4) electron-builder config includes resources

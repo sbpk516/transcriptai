@@ -135,7 +135,20 @@ def validate_file_upload(file, allowed_extensions: List[str], max_size: int) -> 
         
         if file_size > max_size:
             validation_result["is_valid"] = False
-            validation_result["errors"].append(f"File size {file_size} exceeds maximum {max_size}")
+            # Format file sizes in human-readable format
+            def format_size(bytes_size: int) -> str:
+                if bytes_size >= 1024 * 1024 * 1024:
+                    return f"{bytes_size / (1024 * 1024 * 1024):.2f} GB"
+                elif bytes_size >= 1024 * 1024:
+                    return f"{bytes_size / (1024 * 1024):.2f} MB"
+                elif bytes_size >= 1024:
+                    return f"{bytes_size / 1024:.2f} KB"
+                else:
+                    return f"{bytes_size} bytes"
+            
+            file_size_str = format_size(file_size)
+            max_size_str = format_size(max_size)
+            validation_result["errors"].append(f"File size ({file_size_str}) exceeds maximum allowed size ({max_size_str})")
         
         # Check for suspicious file names
         suspicious_patterns = ["..", "/", "\\", ":", "*", "?", "\"", "<", ">", "|"]
