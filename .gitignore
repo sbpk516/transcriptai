@@ -230,6 +230,9 @@ AGENTS.md
 README.md
 *.md
 docs/journal/
+# Allow checked-in architecture docs
+!docs/architecture/
+!docs/architecture/*.md
 
 # Allow tracked specs and prompt packs
 !docs/spec.md
