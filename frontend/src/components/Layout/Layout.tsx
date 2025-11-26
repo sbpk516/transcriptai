@@ -18,7 +18,7 @@ const Layout: React.FC = () => {
   }, [])
 
   useEffect(() => {
-    const bridge = (window as any).signalhubUpdates
+    const bridge = (window as any).transcriptaiUpdates
     if (!bridge || typeof bridge.onAvailable !== 'function') {
       console.warn('[LAYOUT] Update bridge is not available')
       return
@@ -49,7 +49,7 @@ const Layout: React.FC = () => {
 
   const handleDownloadUpdate = useCallback(() => {
     console.log('[LAYOUT] Download update clicked')
-    const bridge = (window as any).signalhubUpdates
+    const bridge = (window as any).transcriptaiUpdates
 
     try {
       const result = bridge?.openDownload?.()

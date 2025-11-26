@@ -38,7 +38,7 @@ const Capture: React.FC<CaptureProps> = ({ onNavigate }) => {
   const [modelStatusMessage, setModelStatusMessage] = useState<string | null>(null)
 
   // LocalStorage functions for state persistence
-  const STORAGE_KEY = 'signalhub_upload_files'
+  const STORAGE_KEY = 'transcriptai_upload_files'
   
   const saveFilesToStorage = useCallback((files: UploadFile[]) => {
     try {
@@ -1053,6 +1053,11 @@ function LiveMicPanel({
       setSessionId(sid)
       console.log('[DEBUG] New sessionId set:', sid)
       console.log('[LIVE] start(): session created', { sessionId: sid })
+      // Clear any previous transcript immediately for the new session
+      if (onTranscriptStart) {
+        console.log('[DEBUG] LiveMicPanel start() - invoking onTranscriptStart to reset transcript state')
+        onTranscriptStart()
+      }
 
       // Get mic
       console.log('[LIVE] start(): requesting mic via getUserMedia')
@@ -1132,9 +1137,6 @@ function LiveMicPanel({
     } catch {}
     setRecording(false)
     setProcessingFinal(true)
-    console.log('[DEBUG] LiveMicPanel stop() - calling onTranscriptStart')
-    onTranscriptStart && onTranscriptStart()
-    console.log('[DEBUG] LiveMicPanel stop() - onTranscriptStart completed')
     try {
       // Wait a little for MediaRecorder to emit the final dataavailable
       console.log('[LIVE] stop(): waiting 1200ms for recorder flush…')
@@ -1174,6 +1176,7 @@ function LiveMicPanel({
         console.log('[DEBUG] LiveMicPanel stop() - calling onTranscriptComplete with:', { textLength: txt.length, callId: cid })
         onTranscriptComplete && onTranscriptComplete({ text: txt, callId: cid })
         console.log('[DEBUG] LiveMicPanel stop() - onTranscriptComplete completed')
+        setSessionId(null)
       } else {
         console.log('[DEBUG] LiveMicPanel stop() - no sessionId, calling onTranscriptError')
         onTranscriptError && onTranscriptError('Session not found')
@@ -1185,6 +1188,7 @@ function LiveMicPanel({
       onTranscriptError && onTranscriptError(msg)
     } finally {
       setProcessingFinal(false)
+      setSessionId(null)
     }
   }, [sessionId, onTranscriptStart, onTranscriptComplete, onTranscriptError])
 

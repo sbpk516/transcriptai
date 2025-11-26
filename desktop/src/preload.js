@@ -105,7 +105,7 @@ contextBridge.exposeInMainWorld('api', {
   backend: backendInfoSync,
 })
 
-contextBridge.exposeInMainWorld('signalhubUpdates', {
+contextBridge.exposeInMainWorld('transcriptaiUpdates', {
   onAvailable(callback) {
     if (typeof callback !== 'function') {
       console.warn('[Preload] onAvailable expects a function callback')
@@ -125,18 +125,38 @@ contextBridge.exposeInMainWorld('signalhubUpdates', {
     return latestManifest
   },
   openDownload() {
+    try {
+      console.log('[Preload] openDownload invoked', {
+        hasManifest: !!latestManifest,
+        hasDownloadUrl: !!latestManifest?.downloadUrl,
+        latestVersion: latestManifest?.latestVersion,
+      })
+    } catch (_) {}
     if (!latestManifest || !latestManifest.downloadUrl) {
       console.warn('[Preload] openDownload called without a manifest')
       return Promise.reject(new Error('No manifest available for download'))
     }
-    return ipcRenderer.invoke('open-update-download').catch((error) => {
-      console.error('[Preload] Failed to launch update download', error)
-      throw error
-    })
+    try {
+      console.log('[Preload] openDownload dispatching IPC request', {
+        downloadUrl: latestManifest.downloadUrl,
+      })
+    } catch (_) {}
+    return ipcRenderer
+      .invoke('open-update-download')
+      .then((result) => {
+        try {
+          console.log('[Preload] openDownload resolved', result)
+        } catch (_) {}
+        return result
+      })
+      .catch((error) => {
+        console.error('[Preload] Failed to launch update download', error)
+        throw error
+      })
   },
 })
 
-contextBridge.exposeInMainWorld('signalhubDictation', {
+contextBridge.exposeInMainWorld('transcriptaiDictation', {
   async getSettings() {
     try {
       const settings = await ipcRenderer.invoke('dictation:get-settings')

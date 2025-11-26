@@ -26,7 +26,7 @@ function getFrontendPort() {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const cfg = require('../../config.js')
     if (cfg && cfg.FRONTEND_PORT) return cfg.FRONTEND_PORT
-  } catch (_) {}
+  } catch (_) { }
   return 3000
 }
 
@@ -40,7 +40,7 @@ function logLine(...args) {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
     const line = `[${new Date().toISOString()}] ${args.map(a => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ')}\n`
     fs.appendFileSync(path.join(dir, 'desktop.log'), line)
-  } catch (_) {}
+  } catch (_) { }
 }
 
 let backendInfo = { port: 8001, pid: null, mode: isDev ? 'dev' : 'prod' }
@@ -58,7 +58,7 @@ async function triggerDictationWarmup(port) {
         host: '127.0.0.1',
         port,
         path: '/api/v1/dictation/warmup',
-        timeout: 3000,
+        timeout: 15000,
       }, res => {
         const chunks = []
         res.on('data', chunk => chunks.push(chunk))
@@ -158,24 +158,63 @@ async function promptMacPermissions() {
 async function isPortFree(port) {
   return new Promise(resolve => {
     const tester = net.createServer()
-    tester.once('error', () => resolve(false))
-    tester.once('listening', () => tester.close(() => resolve(true)))
+    tester.once('error', (err) => {
+      // Port is in use or error binding
+      logLine('port_check_failed', { port, error: err.message })
+      resolve(false)
+    })
+    tester.once('listening', () => {
+      tester.close(() => {
+        logLine('port_check_ok', { port })
+        resolve(true)
+      })
+    })
     tester.listen(port, '127.0.0.1')
   })
 }
 
 async function findPort(candidates = [8001, 8011, 8021]) {
+  logLine('find_port_start', { candidates })
   for (const p of candidates) {
-    // Skip if busy
+    // Check if port is truly free (not just available to bind, but actually listening)
     // eslint-disable-next-line no-await-in-loop
-    if (await isPortFree(p)) return p
+    if (await isPortFree(p)) {
+      // Double-check by trying to connect to the port
+      const isActuallyFree = await new Promise(resolve => {
+        const testSocket = net.createConnection({ port: p, host: '127.0.0.1' }, () => {
+          // Connection succeeded - port is in use
+          testSocket.destroy()
+          resolve(false)
+        })
+        testSocket.on('error', () => {
+          // Connection failed - port is free
+          resolve(true)
+        })
+        // Timeout after 100ms
+        setTimeout(() => {
+          testSocket.destroy()
+          resolve(true) // Assume free if connection times out
+        }, 100)
+      })
+
+      if (isActuallyFree) {
+        logLine('find_port_selected', { port: p })
+        return p
+      } else {
+        logLine('find_port_busy', { port: p })
+      }
+    }
   }
   // Fallback to ephemeral
+  logLine('find_port_ephemeral')
   return new Promise(resolve => {
     const srv = net.createServer()
     srv.listen(0, '127.0.0.1', () => {
       const { port } = srv.address()
-      srv.close(() => resolve(port))
+      srv.close(() => {
+        logLine('find_port_ephemeral_selected', { port })
+        resolve(port)
+      })
     })
   })
 }
@@ -216,31 +255,63 @@ async function startBackendDev() {
   const port = await findPort()
   backendInfo.port = port
   const mlxVenvDev = path.resolve(__dirname, '..', '..', 'venv_mlx')
-  const env = { 
-    ...process.env, 
-    PATH: withBrewPath(process.env.PATH), 
-    SIGNALHUB_MODE: 'desktop', 
-    SIGNALHUB_PORT: String(port), 
-    SIGNALHUB_DATA_DIR: dataDir(), 
-    SIGNALHUB_ENABLE_TRANSCRIPTION: '1',
-    SIGNALHUB_LIVE_TRANSCRIPTION: '1',
-    SIGNALHUB_LIVE_MIC: '1',
+  const env = {
+    ...process.env,
+    PATH: withBrewPath(process.env.PATH),
+    TRANSCRIPTAI_MODE: 'desktop',
+    TRANSCRIPTAI_PORT: String(port),
+    TRANSCRIPTAI_DATA_DIR: dataDir(),
+    TRANSCRIPTAI_ENABLE_TRANSCRIPTION: '1',
+    TRANSCRIPTAI_LIVE_TRANSCRIPTION: '1',
+    TRANSCRIPTAI_LIVE_MIC: '1',
     // Batch-only live mic to ensure full transcript at stop()
-    SIGNALHUB_LIVE_BATCH_ONLY: '1',
+    TRANSCRIPTAI_LIVE_BATCH_ONLY: '1',
     // Enable MLX-accelerated Whisper (3.25x faster on Apple Silicon)
-    SIGNALHUB_USE_MLX: '1',
-    SIGNALHUB_MLX_VENV: mlxVenvDev,
+    TRANSCRIPTAI_USE_MLX: '1',
+    TRANSCRIPTAI_MLX_VENV: mlxVenvDev,
     // File upload size limit (10 GB = 10737418240 bytes)
     MAX_FILE_SIZE: '10737418240',
   }
+  const hfToken = process.env.HUGGINGFACE_HUB_TOKEN
+  if (hfToken) {
+    env.HUGGINGFACE_HUB_TOKEN = hfToken
+  }
   const cwd = path.join(__dirname, '..', '..', 'backend')
   const args = ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', String(port)]
-  logLine('spawn_backend_dev', JSON.stringify({ cwd, args, env: { SIGNALHUB_MODE: env.SIGNALHUB_MODE, SIGNALHUB_PORT: env.SIGNALHUB_PORT, SIGNALHUB_DATA_DIR: env.SIGNALHUB_DATA_DIR } }))
+  logLine('spawn_backend_dev', JSON.stringify({ cwd, args, env: { TRANSCRIPTAI_MODE: env.TRANSCRIPTAI_MODE, TRANSCRIPTAI_PORT: env.TRANSCRIPTAI_PORT, TRANSCRIPTAI_DATA_DIR: env.TRANSCRIPTAI_DATA_DIR } }))
   backendProcess = spawn(process.env.ELECTRON_PYTHON || 'python', args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] })
   backendInfo.pid = backendProcess.pid
-  backendProcess.stdout.on('data', d => logLine('backend_stdout', String(d).trim()))
-  backendProcess.stderr.on('data', d => logLine('backend_stderr', String(d).trim()))
-  backendProcess.on('exit', (code, signal) => logLine('backend_exit', `code=${code}`, `signal=${signal}`))
+
+  // Collect all output for error diagnosis
+  let stdoutBuffer = ''
+  let stderrBuffer = ''
+
+  backendProcess.stdout.on('data', d => {
+    const output = String(d).trim()
+    stdoutBuffer += output + '\n'
+    logLine('backend_stdout', output)
+  })
+  backendProcess.stderr.on('data', d => {
+    const output = String(d).trim()
+    stderrBuffer += output + '\n'
+    logLine('backend_stderr', output)
+  })
+
+  // Handle process exit
+  backendProcess.on('exit', (code, signal) => {
+    logLine('backend_exit', { code, signal, pid: backendProcess.pid })
+    if (code !== 0 && code !== null) {
+      const errorMsg = `Backend process exited with code ${code}${signal ? ` (signal: ${signal})` : ''}`
+      logLine('backend_exit_error', {
+        error: errorMsg,
+        code,
+        signal,
+        stdout: stdoutBuffer.slice(-1000), // Last 1000 chars
+        stderr: stderrBuffer.slice(-1000)
+      })
+    }
+  })
+
   let waitStart = Date.now()
   try {
     waitStart = Date.now()
@@ -248,7 +319,20 @@ async function startBackendDev() {
     logLine('backend_health_ready', { port, elapsed_ms: Date.now() - waitStart })
     await triggerDictationWarmup(port)
   } catch (e) {
-    logLine('backend_health_failed', { error: e.message, elapsed_ms: Date.now() - waitStart })
+    logLine('backend_health_failed', {
+      error: e.message,
+      elapsed_ms: Date.now() - waitStart,
+      stdout: stdoutBuffer.slice(-1000),
+      stderr: stderrBuffer.slice(-1000),
+      pid: backendProcess.pid
+    })
+    // Check if process is still running
+    try {
+      process.kill(backendProcess.pid, 0) // Check if process exists
+      logLine('backend_process_still_running', { pid: backendProcess.pid })
+    } catch (killErr) {
+      logLine('backend_process_dead', { pid: backendProcess.pid, error: killErr.message })
+    }
     throw e
   }
 }
@@ -257,33 +341,65 @@ async function startBackendProd() {
   const port = await findPort()
   backendInfo.port = port
   const resourcesVenv = path.join(process.resourcesPath, 'venv_mlx')
-  const env = { 
-    ...process.env, 
-    PATH: withBrewPath(process.env.PATH), 
-    SIGNALHUB_MODE: 'desktop', 
-    SIGNALHUB_PORT: String(port), 
-    SIGNALHUB_DATA_DIR: dataDir(), 
-    SIGNALHUB_ENABLE_TRANSCRIPTION: '1',
-    SIGNALHUB_LIVE_TRANSCRIPTION: '1',
-    SIGNALHUB_LIVE_MIC: '1',
+  const env = {
+    ...process.env,
+    PATH: withBrewPath(process.env.PATH),
+    TRANSCRIPTAI_MODE: 'desktop',
+    TRANSCRIPTAI_PORT: String(port),
+    TRANSCRIPTAI_DATA_DIR: dataDir(),
+    TRANSCRIPTAI_ENABLE_TRANSCRIPTION: '1',
+    TRANSCRIPTAI_LIVE_TRANSCRIPTION: '1',
+    TRANSCRIPTAI_LIVE_MIC: '1',
     // Batch-only live mic to ensure full transcript at stop()
-    SIGNALHUB_LIVE_BATCH_ONLY: '1',
+    TRANSCRIPTAI_LIVE_BATCH_ONLY: '1',
     // Ensure Whisper uses bundled cache for offline models
     XDG_CACHE_HOME: path.join(process.resourcesPath, 'whisper_cache'),
     // Enable MLX-accelerated Whisper (3.25x faster on Apple Silicon)
-    SIGNALHUB_USE_MLX: '1',
-    SIGNALHUB_MLX_VENV: resourcesVenv,
+    TRANSCRIPTAI_USE_MLX: '1',
+    TRANSCRIPTAI_MLX_VENV: resourcesVenv,
     // File upload size limit (10 GB = 10737418240 bytes)
     MAX_FILE_SIZE: '10737418240',
   }
-  const binName = process.platform === 'win32' ? 'signalhub-backend.exe' : 'signalhub-backend'
+  const hfToken = process.env.HUGGINGFACE_HUB_TOKEN
+  if (hfToken) {
+    env.HUGGINGFACE_HUB_TOKEN = hfToken
+  }
+  const binName = process.platform === 'win32' ? 'transcriptai-backend.exe' : 'transcriptai-backend'
   const binPath = path.join(process.resourcesPath, 'backend', binName)
-  logLine('spawn_backend_prod', JSON.stringify({ binPath, env: { SIGNALHUB_MODE: env.SIGNALHUB_MODE, SIGNALHUB_PORT: env.SIGNALHUB_PORT, SIGNALHUB_DATA_DIR: env.SIGNALHUB_DATA_DIR } }))
+  logLine('spawn_backend_prod', JSON.stringify({ binPath, env: { TRANSCRIPTAI_MODE: env.TRANSCRIPTAI_MODE, TRANSCRIPTAI_PORT: env.TRANSCRIPTAI_PORT, TRANSCRIPTAI_DATA_DIR: env.TRANSCRIPTAI_DATA_DIR } }))
   backendProcess = spawn(binPath, [], { env, stdio: ['ignore', 'pipe', 'pipe'] })
   backendInfo.pid = backendProcess.pid
-  backendProcess.stdout.on('data', d => logLine('backend_stdout', String(d).trim()))
-  backendProcess.stderr.on('data', d => logLine('backend_stderr', String(d).trim()))
-  backendProcess.on('exit', (code, signal) => logLine('backend_exit', `code=${code}`, `signal=${signal}`))
+
+  // Collect all output for error diagnosis
+  let stdoutBuffer = ''
+  let stderrBuffer = ''
+
+  backendProcess.stdout.on('data', d => {
+    const output = String(d).trim()
+    stdoutBuffer += output + '\n'
+    logLine('backend_stdout', output)
+  })
+  backendProcess.stderr.on('data', d => {
+    const output = String(d).trim()
+    stderrBuffer += output + '\n'
+    logLine('backend_stderr', output)
+  })
+
+  // Handle process exit
+  backendProcess.on('exit', (code, signal) => {
+    logLine('backend_exit', { code, signal, pid: backendProcess.pid })
+    if (code !== 0 && code !== null) {
+      const errorMsg = `Backend process exited with code ${code}${signal ? ` (signal: ${signal})` : ''}`
+      logLine('backend_exit_error', {
+        error: errorMsg,
+        code,
+        signal,
+        stdout: stdoutBuffer.slice(-1000),
+        stderr: stderrBuffer.slice(-1000)
+      })
+    }
+  })
+
   let waitStart = Date.now()
   try {
     waitStart = Date.now()
@@ -291,7 +407,20 @@ async function startBackendProd() {
     logLine('backend_health_ready', { port, elapsed_ms: Date.now() - waitStart })
     await triggerDictationWarmup(port)
   } catch (e) {
-    logLine('backend_health_failed', { error: e.message, elapsed_ms: Date.now() - waitStart })
+    logLine('backend_health_failed', {
+      error: e.message,
+      elapsed_ms: Date.now() - waitStart,
+      stdout: stdoutBuffer.slice(-1000),
+      stderr: stderrBuffer.slice(-1000),
+      pid: backendProcess.pid
+    })
+    // Check if process is still running
+    try {
+      process.kill(backendProcess.pid, 0) // Check if process exists
+      logLine('backend_process_still_running', { pid: backendProcess.pid })
+    } catch (killErr) {
+      logLine('backend_process_dead', { pid: backendProcess.pid, error: killErr.message })
+    }
     throw e
   }
 }
@@ -383,7 +512,7 @@ function createAppMenu() {
 
   const template = [
     {
-      label: 'SignalHub',
+      label: 'TranscriptAI',
       submenu: [
         { role: 'about' },
         { type: 'separator' },
@@ -520,7 +649,7 @@ app.on('before-quit', () => {
     if (backendProcess && !backendProcess.killed) {
       backendProcess.kill()
     }
-  } catch (_) {}
+  } catch (_) { }
   try {
     if (dictationManager) {
       dictationManager.dispose().catch(err => logLine('dictation_manager_dispose_error', err.message))
@@ -664,6 +793,13 @@ ipcMain.handle('dictation:update-indicator', async (_event, payload = {}) => {
 
 ipcMain.handle('open-update-download', async () => {
   const manifest = getLatestManifest()
+  try {
+    logLine('update_open_request', {
+      hasManifest: !!manifest,
+      hasDownloadUrl: !!manifest?.downloadUrl,
+      latestVersion: manifest?.latestVersion || null,
+    })
+  } catch (_) {}
   if (!manifest || !manifest.downloadUrl) {
     const error = new Error('No update download URL available')
     logLine('update_open_error', error.message)
@@ -673,6 +809,13 @@ ipcMain.handle('open-update-download', async () => {
   try {
     const parsed = new URL(manifest.downloadUrl)
     const allowedHost = 'github.com'
+    try {
+      logLine('update_open_validate', {
+        downloadUrl: parsed.toString(),
+        protocol: parsed.protocol,
+        hostname: parsed.hostname,
+      })
+    } catch (_) {}
     if (parsed.protocol !== 'https:' || parsed.hostname !== allowedHost) {
       throw new Error(`Blocked download URL: ${parsed.toString()}`)
     }
@@ -691,7 +834,7 @@ function getDictationManager() {
       logger: (level, message, meta) => {
         try {
           logLine(`dictation_manager_${level}`, message, meta || {})
-        } catch (_) {}
+        } catch (_) { }
       },
     })
 

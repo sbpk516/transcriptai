@@ -1,5 +1,5 @@
-appId: com.signalhub.app
-productName: SignalHub
+appId: com.transcriptai.app
+productName: TranscriptAI
 directories:
   output: dist
 files:
@@ -48,5 +48,5 @@ asar: true
 publish:
   provider: github
   owner: sbpk516
-  repo: signalhub
+  repo: transcriptai
   releaseType: draft

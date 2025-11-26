@@ -46,9 +46,11 @@ const Header: React.FC<HeaderProps> = ({
 
   const handleDownloadClick = () => {
     if (isLaunchingDownload) {
+      console.warn('[HEADER] Download click ignored because launch is in progress')
       return
     }
 
+    console.log('[HEADER] Download click accepted, launching update flow')
     setIsLaunchingDownload(true)
 
     const notifyFailure = () => {
@@ -60,12 +62,16 @@ const Header: React.FC<HeaderProps> = ({
     try {
       const result = onDownloadUpdate?.()
       Promise.resolve(result)
+        .then(() => {
+          console.log('[HEADER] Update download flow resolved successfully')
+        })
         .catch((error: unknown) => {
           console.error('[HEADER] Failed to launch update download', error)
           notifyFailure()
         })
         .finally(() => {
           if (isMountedRef.current) {
+            console.log('[HEADER] Download button state reset')
             setIsLaunchingDownload(false)
           }
         })
@@ -85,7 +91,7 @@ const Header: React.FC<HeaderProps> = ({
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-sm text-blue-800">
             <div className="flex flex-col gap-1">
               <div>
-                <strong>Update available:</strong> SignalHub {updateInfo.latestVersion}
+                <strong>Update available:</strong> TranscriptAI {updateInfo.latestVersion}
               </div>
               {Array.isArray(updateInfo.releaseNotes) && updateInfo.releaseNotes.length > 0 && (
                 <ul className="list-disc list-inside text-blue-700">

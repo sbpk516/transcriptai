@@ -26,8 +26,8 @@ else
 fi
 
 # 2) Backend binary exists
-if [[ ! -x "$ROOT_DIR/backend/bin/signalhub-backend" ]]; then
-  fail "backend/bin/signalhub-backend not found or not executable. Build with: bash backend/build-backend.sh"
+if [[ ! -x "$ROOT_DIR/backend/bin/transcriptai-backend" ]]; then
+  fail "backend/bin/transcriptai-backend not found or not executable. Build with: bash backend/build-backend.sh"
 else
   ok "Backend binary present"
 fi
