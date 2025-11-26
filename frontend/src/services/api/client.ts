@@ -1,5 +1,5 @@
 /**
- * HTTP Client Configuration for SignalHub API
+ * HTTP Client Configuration for TranscriptAI API
  * 
  * This file sets up the axios instance with:
  * - Base configuration (URL, timeout, headers)

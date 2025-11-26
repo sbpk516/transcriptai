@@ -1,5 +1,5 @@
 """
-File upload handling for SignalHub Phase 1.
+File upload handling for TranscriptAI Phase 1.
 Provides comprehensive file upload functionality with extensive logging and debugging.
 """
 import os
@@ -19,7 +19,7 @@ from .logging_config import log_function_call, log_file_operation, PerformanceMo
 
 # Configure logger for this module
 import logging
-logger = logging.getLogger('signalhub.upload')
+logger = logging.getLogger('transcriptai.upload')
 
 # Import for duration calculation
 try:

@@ -12,20 +12,20 @@ const { TestFramework, TestUtils } = require('./test-framework');
 const framework = new TestFramework('PHASE 1: Key Detection');
 
 // Paths
-const LOG_PATH = path.join(os.homedir(), 'Library/Application Support/signalhub/logs/desktop.log');
-const SETTINGS_PATH = path.join(os.homedir(), 'Library/Application Support/signalhub/dictation-settings.json');
+const LOG_PATH = path.join(os.homedir(), 'Library/Application Support/transcriptai/logs/desktop.log');
+const SETTINGS_PATH = path.join(os.homedir(), 'Library/Application Support/transcriptai/dictation-settings.json');
 
 /**
  * Test 1.1: Global key listener initialization
  */
 framework.test('Global key listener initialization', async () => {
   // Check if the app is running
-  const isRunning = await TestUtils.isProcessRunning('SignalHub');
+  const isRunning = await TestUtils.isProcessRunning('TranscriptAI');
   
   if (!isRunning) {
     return {
       pass: false,
-      message: 'SignalHub app is not running. Please start the desktop app first.',
+      message: 'TranscriptAI app is not running. Please start the desktop app first.',
     };
   }
   

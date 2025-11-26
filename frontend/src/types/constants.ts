@@ -112,9 +112,9 @@ export const VALIDATION_RULES = {
 
 // Local Storage Keys
 export const STORAGE_KEYS = {
-  UPLOAD_HISTORY: 'signalhub_upload_history',
-  USER_PREFERENCES: 'signalhub_user_preferences',
-  THEME: 'signalhub_theme',
+  UPLOAD_HISTORY: 'transcriptai_upload_history',
+  USER_PREFERENCES: 'transcriptai_user_preferences',
+  THEME: 'transcriptai_theme',
 } as const;
 
 // Theme Configuration

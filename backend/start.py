@@ -40,7 +40,7 @@ def main():
     """Main function to start the backend server"""
     port = get_backend_port()
     
-    print(f"🚀 Starting SignalHub backend on port {port}")
+    print(f"🚀 Starting TranscriptAI backend on port {port}")
     print(f"📍 Health check: http://127.0.0.1:{port}/health")
     print(f"📚 API docs: http://127.0.0.1:{port}/docs")
     print("-" * 50)

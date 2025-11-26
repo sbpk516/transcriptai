@@ -1,4 +1,4 @@
-const { BrowserWindow } = require('electron')
+const { BrowserWindow, screen } = require('electron')
 const path = require('path')
 
 let indicatorWindow = null
@@ -65,6 +65,19 @@ function updateIndicator({ visible, mode = 'recording', position }) {
     const x = Math.max(Math.round(targetX - INDICATOR_SIZE.width / 2), 0)
     const y = Math.max(Math.round(targetY - INDICATOR_SIZE.height - 24), 0)
     win.setPosition(x, y, false)
+  } else {
+    // Fallback: center on primary display if no position provided
+    try {
+      const primaryDisplay = screen.getPrimaryDisplay()
+      const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize
+      const x = Math.round((screenWidth - INDICATOR_SIZE.width) / 2)
+      const y = Math.round((screenHeight - INDICATOR_SIZE.height) / 2)
+      win.setPosition(x, y, false)
+    } catch (error) {
+      // If screen API fails, window will use default position
+      // eslint-disable-next-line no-console
+      console.warn('Failed to get screen bounds for indicator window', error)
+    }
   }
 
   if (!lastVisible) {

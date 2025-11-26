@@ -3,7 +3,7 @@
 # Frontend Health Check Script
 # Run this before starting development to prevent issues
 
-echo "🔍 Frontend Health Check - SignalHub"
+echo "🔍 Frontend Health Check - TranscriptAI"
 echo "======================================"
 
 # Check 1: Directory
@@ -13,7 +13,7 @@ if [[ "$CURRENT_DIR" == *"/frontend" ]]; then
     echo "✅ Correct directory: $CURRENT_DIR"
 else
     echo "❌ Wrong directory: $CURRENT_DIR"
-    echo "   Should be in: .../signalhub/frontend"
+    echo "   Should be in: .../transcriptai/frontend"
     echo "   Run: cd frontend"
     exit 1
 fi

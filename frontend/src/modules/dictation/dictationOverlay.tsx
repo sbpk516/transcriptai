@@ -8,7 +8,7 @@ function respondPermission(requestId: number | null, granted: boolean) {
   if (requestId === null) {
     return
   }
-  const bridge = (window as unknown as { signalhubDictation?: any })?.signalhubDictation
+  const bridge = (window as unknown as { transcriptaiDictation?: any })?.transcriptaiDictation
   if (bridge && typeof bridge.respondPermission === 'function') {
     void bridge.respondPermission({ requestId, granted }).catch((error: unknown) => {
       console.warn('[DictationOverlay] respondPermission failed', error)
@@ -17,7 +17,7 @@ function respondPermission(requestId: number | null, granted: boolean) {
 }
 
 function cancelActivePress(reason: string) {
-  const bridge = (window as unknown as { signalhubDictation?: any })?.signalhubDictation
+  const bridge = (window as unknown as { transcriptaiDictation?: any })?.transcriptaiDictation
   if (bridge && typeof bridge.cancelActivePress === 'function') {
     void bridge.cancelActivePress({ reason }).catch((error: unknown) => {
       console.warn('[DictationOverlay] cancelActivePress failed', error)

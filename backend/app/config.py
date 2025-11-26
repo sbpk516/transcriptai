@@ -1,5 +1,5 @@
 """
-Configuration settings for SignalHub application.
+Configuration settings for TranscriptAI application.
 """
 from pydantic_settings import BaseSettings
 from typing import List, Union
@@ -11,11 +11,11 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
     
     # Database Configuration
-    database_url: str = "postgresql://signalhub:signalhub123@localhost:5432/signalhub"
-    # For SQLite (desktop mode): set via env based on SIGNALHUB_DATA_DIR
+    database_url: str = "postgresql://transcriptai:transcriptai123@localhost:5432/transcriptai"
+    # For SQLite (desktop mode): set via env based on TRANSCRIPTAI_DATA_DIR
     
     # Application Configuration
-    app_name: str = "SignalHub"
+    app_name: str = "TranscriptAI"
     debug: bool = True
     secret_key: str = "your-secret-key-here-change-in-production"
     
@@ -25,14 +25,15 @@ class Settings(BaseSettings):
     
     # Logging
     log_level: str = "DEBUG"
-    log_file: str = "logs/signalhub.log"
+    log_file: str = "logs/transcriptai.log"
     
     # API Configuration
     api_v1_str: str = "/api/v1"
-    project_name: str = "Contact Center SignalHub"
+    project_name: str = "Contact Center TranscriptAI"
     
     # CORS Configuration (for future frontend)
-    backend_cors_origins: List[str] = ["http://localhost:3000", "http://localhost:8080"]
+    # Allow all origins to support file:// protocol in packaged desktop app
+    backend_cors_origins: List[str] = ["*"]
     
     # File Upload Configuration
     max_file_size: Union[int, str] = 10 * 1024 * 1024 * 1024  # 10GB in bytes
@@ -71,26 +72,26 @@ settings = Settings()
 
 def _desktop_data_dir() -> Path:
     """Resolve desktop data directory from env."""
-    data_dir = os.getenv("SIGNALHUB_DATA_DIR")
+    data_dir = os.getenv("TRANSCRIPTAI_DATA_DIR")
     if data_dir:
         return Path(data_dir)
     # Fallback to local folder if not provided
-    return Path.cwd() / "signalhub_data"
+    return Path.cwd() / "transcriptai_data"
 
 
 def get_database_url() -> str:
     """Get database URL from environment or use default.
 
-    In desktop mode (SIGNALHUB_MODE=desktop), prefer SQLite DB under the provided data dir.
+    In desktop mode (TRANSCRIPTAI_MODE=desktop), prefer SQLite DB under the provided data dir.
     """
     # Desktop mode override
-    if os.getenv("SIGNALHUB_MODE", "").lower() == "desktop":
+    if os.getenv("TRANSCRIPTAI_MODE", "").lower() == "desktop":
         data_dir = _desktop_data_dir()
         try:
             data_dir.mkdir(parents=True, exist_ok=True)
         except Exception:
             pass
-        db_path = data_dir / "signalhub.db"
+        db_path = data_dir / "transcriptai.db"
         return f"sqlite:///{db_path}"
     # Server/default mode
     return os.getenv("DATABASE_URL", settings.database_url)
@@ -104,29 +105,29 @@ def get_secret_key() -> str:
 def is_live_transcription_enabled() -> bool:
     """Return True if live transcription (SSE) is enabled via env.
 
-    Controlled by SIGNALHUB_LIVE_TRANSCRIPTION=1. Defaults to False.
+    Controlled by TRANSCRIPTAI_LIVE_TRANSCRIPTION=1. Defaults to False.
     """
-    return os.getenv("SIGNALHUB_LIVE_TRANSCRIPTION", "0") == "1"
+    return os.getenv("TRANSCRIPTAI_LIVE_TRANSCRIPTION", "0") == "1"
 
 
 def is_live_mic_enabled() -> bool:
     """Return True if mic-based live capture is enabled via env.
 
-    Controlled by SIGNALHUB_LIVE_MIC=1. Defaults to False.
+    Controlled by TRANSCRIPTAI_LIVE_MIC=1. Defaults to False.
     """
-    return os.getenv("SIGNALHUB_LIVE_MIC", "0") == "1"
+    return os.getenv("TRANSCRIPTAI_LIVE_MIC", "0") == "1"
 
 
 def is_live_batch_only() -> bool:
     """Return True to disable chunk STT/SSE and transcribe only at stop.
 
-    Controlled by SIGNALHUB_LIVE_BATCH_ONLY=1. Defaults to False.
+    Controlled by TRANSCRIPTAI_LIVE_BATCH_ONLY=1. Defaults to False.
     """
-    return os.getenv("SIGNALHUB_LIVE_BATCH_ONLY", "0") == "1"
+    return os.getenv("TRANSCRIPTAI_LIVE_BATCH_ONLY", "0") == "1"
 
 
 # Override upload_dir for desktop mode at import-time
-if os.getenv("SIGNALHUB_MODE", "").lower() == "desktop":
+if os.getenv("TRANSCRIPTAI_MODE", "").lower() == "desktop":
     data_dir = _desktop_data_dir()
     try:
         data_dir.mkdir(parents=True, exist_ok=True)
@@ -141,4 +142,4 @@ if os.getenv("SIGNALHUB_MODE", "").lower() == "desktop":
     except Exception:
         pass
     settings.upload_dir = str(uploads_dir)
-    settings.log_file = str(logs_dir / "signalhub.log")
+    settings.log_file = str(logs_dir / "transcriptai.log")

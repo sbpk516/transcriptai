@@ -16,7 +16,7 @@ echo "This test will verify audio upload is working"
 echo ""
 
 # Get desktop log path
-LOG_PATH="$HOME/Library/Application Support/signalhub-desktop/logs/desktop.log"
+LOG_PATH="$HOME/Library/Application Support/transcriptai-desktop/logs/desktop.log"
 
 if [ ! -f "$LOG_PATH" ]; then
   echo -e "${RED}✗${NC} Desktop log not found"
@@ -24,7 +24,7 @@ if [ ! -f "$LOG_PATH" ]; then
 fi
 
 echo -e "${YELLOW}Instructions:${NC}"
-echo "1. Make sure SignalHub app is running with DevTools open (Cmd+Option+I)"
+echo "1. Make sure TranscriptAI app is running with DevTools open (Cmd+Option+I)"
 echo "2. Clear the browser console (optional but recommended)"
 echo "3. Perform dictation: Hold CMD+Option, speak 'test', release"
 echo "4. Wait 3 seconds"

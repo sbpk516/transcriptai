@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Card } from '../components/Shared'
 import { DEFAULT_SHORTCUT, validateShortcut } from './SettingsValidation'
+import { ModelSettings } from '../modules/settings/ModelSettings'
 
 type DictationSettings = {
   enabled: boolean
@@ -21,7 +22,7 @@ function normalizeSettings(candidate: unknown): DictationSettings {
 
 const Settings: React.FC = () => {
   const dictationBridge = useMemo(() => (
-    (window as unknown as { signalhubDictation?: any })?.signalhubDictation || null
+    (window as unknown as { transcriptaiDictation?: any })?.transcriptaiDictation || null
   ), [])
 
   const [dictationSettings, setDictationSettings] = useState<DictationSettings | null>(null)
@@ -234,12 +235,21 @@ const Settings: React.FC = () => {
               <p className="font-medium text-gray-900">Troubleshooting</p>
               <ul className="mt-2 list-disc space-y-1 pl-5">
                 <li>Make sure the shortcut stays unique. If dictation doesn&apos;t start, try a different combination.</li>
-                <li>On macOS, confirm SignalHub is allowed in System Settings → Privacy &amp; Security → Accessibility and Microphone.</li>
+                <li>On macOS, confirm TranscriptAI is allowed in System Settings → Privacy &amp; Security → Accessibility and Microphone.</li>
                 <li>Reopen this window after changing permissions to refresh status.</li>
               </ul>
             </div>
           </div>
         )}
+      </Card>
+
+      <Card title="AI Models">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Manage the speech recognition models used for dictation. Larger models are more accurate but require more resources.
+          </p>
+          <ModelSettings />
+        </div>
       </Card>
     </div>
   )

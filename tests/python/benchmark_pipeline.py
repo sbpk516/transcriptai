@@ -1,5 +1,5 @@
 """
-Performance Benchmarking Tool for SignalHub Phase 1.3 Week 4.
+Performance Benchmarking Tool for TranscriptAI Phase 1.3 Week 4.
 Benchmarks the audio processing pipeline performance.
 """
 import asyncio
@@ -263,7 +263,7 @@ class PipelineBenchmarker:
 
 async def main():
     """Run the benchmark suite."""
-    print("SignalHub Pipeline Performance Benchmark")
+    print("TranscriptAI Pipeline Performance Benchmark")
     print("="*50)
     
     benchmarker = PipelineBenchmarker()

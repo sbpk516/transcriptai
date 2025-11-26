@@ -1,5 +1,5 @@
 """
-Utility to clear all rows from SignalHub database tables without dropping them.
+Utility to clear all rows from TranscriptAI database tables without dropping them.
 
 Usage:
   python backend/scripts/clear_db.py

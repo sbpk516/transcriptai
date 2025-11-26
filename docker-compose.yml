@@ -5,15 +5,15 @@ services:
   postgres:
     image: postgres:15
     environment:
-      POSTGRES_DB: signalhub
-      POSTGRES_USER: signalhub
-      POSTGRES_PASSWORD: signalhub123
+      POSTGRES_DB: transcriptai
+      POSTGRES_USER: transcriptai
+      POSTGRES_PASSWORD: transcriptai123
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U signalhub"]
+      test: ["CMD-SHELL", "pg_isready -U transcriptai"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -22,9 +22,9 @@ services:
   mongodb:
     image: mongo:7
     environment:
-      MONGO_INITDB_ROOT_USERNAME: signalhub
-      MONGO_INITDB_ROOT_PASSWORD: signalhub123
-      MONGO_INITDB_DATABASE: signalhub
+      MONGO_INITDB_ROOT_USERNAME: transcriptai
+      MONGO_INITDB_ROOT_PASSWORD: transcriptai123
+      MONGO_INITDB_DATABASE: transcriptai
     ports:
       - "27017:27017"
     volumes:
@@ -107,8 +107,8 @@ services:
     ports:
       - "8001:8001"
     environment:
-      - DATABASE_URL=postgresql://signalhub:signalhub123@postgres:5432/signalhub
-      - MONGODB_URL=mongodb://signalhub:signalhub123@mongodb:27017/signalhub
+      - DATABASE_URL=postgresql://transcriptai:transcriptai123@postgres:5432/transcriptai
+      - MONGODB_URL=mongodb://transcriptai:transcriptai123@mongodb:27017/transcriptai
       - REDIS_URL=redis://redis:6379
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - ELASTICSEARCH_URL=http://elasticsearch:9200
@@ -164,7 +164,7 @@ services:
       dockerfile: Dockerfile
     command: celery -A app.celery worker --loglevel=info
     environment:
-      - DATABASE_URL=postgresql://signalhub:signalhub123@postgres:5432/signalhub
+      - DATABASE_URL=postgresql://transcriptai:transcriptai123@postgres:5432/transcriptai
       - REDIS_URL=redis://redis:6379
     depends_on:
       - postgres

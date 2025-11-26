@@ -1,5 +1,5 @@
 """
-Pipeline Monitor for SignalHub Phase 1.3.
+Pipeline Monitor for TranscriptAI Phase 1.3.
 Real-time monitoring and performance tracking for the audio processing pipeline.
 """
 import asyncio
@@ -16,7 +16,7 @@ import psutil
 from .debug_utils import debug_helper
 
 # Configure logger for this module
-logger = logging.getLogger('signalhub.pipeline_monitor')
+logger = logging.getLogger('transcriptai.pipeline_monitor')
 
 
 class PerformanceMetrics:

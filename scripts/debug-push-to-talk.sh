@@ -17,13 +17,13 @@ echo -e "${BLUE}Push-to-Talk Diagnostic Tool${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
-# 1. Check if SignalHub is running
-echo -e "${BLUE}[1/8]${NC} Checking if SignalHub desktop app is running..."
-if pgrep -f "SignalHub" > /dev/null 2>&1; then
-    echo -e "${GREEN}✓${NC} SignalHub is running"
+# 1. Check if TranscriptAI is running
+echo -e "${BLUE}[1/8]${NC} Checking if TranscriptAI desktop app is running..."
+if pgrep -f "TranscriptAI" > /dev/null 2>&1; then
+    echo -e "${GREEN}✓${NC} TranscriptAI is running"
 else
-    echo -e "${RED}✗${NC} SignalHub is NOT running"
-    echo -e "${YELLOW}→${NC} Please start the SignalHub desktop app first"
+    echo -e "${RED}✗${NC} TranscriptAI is NOT running"
+    echo -e "${YELLOW}→${NC} Please start the TranscriptAI desktop app first"
     echo -e "${YELLOW}→${NC} Note: Some checks will still run to show configuration status"
     echo ""
 fi
@@ -31,7 +31,7 @@ echo ""
 
 # 2. Check dictation settings file
 echo -e "${BLUE}[2/8]${NC} Checking dictation settings..."
-SETTINGS_FILE="$HOME/Library/Application Support/signalhub/dictation-settings.json"
+SETTINGS_FILE="$HOME/Library/Application Support/transcriptai/dictation-settings.json"
 if [ -f "$SETTINGS_FILE" ]; then
     echo -e "${GREEN}✓${NC} Settings file exists"
     echo -e "${YELLOW}Contents:${NC}"
@@ -60,11 +60,11 @@ echo -e "${BLUE}[3/8]${NC} Checking macOS Accessibility permissions..."
 if command -v tccutil &> /dev/null; then
     echo -e "${YELLOW}→${NC} Please manually verify:"
     echo "   System Preferences → Security & Privacy → Privacy → Accessibility"
-    echo "   SignalHub should be listed and enabled"
+    echo "   TranscriptAI should be listed and enabled"
 else
     echo -e "${YELLOW}→${NC} Cannot auto-check. Please manually verify:"
     echo "   System Preferences → Security & Privacy → Privacy → Accessibility"
-    echo "   SignalHub should be listed and enabled"
+    echo "   TranscriptAI should be listed and enabled"
 fi
 echo ""
 
@@ -72,14 +72,14 @@ echo ""
 echo -e "${BLUE}[4/8]${NC} Checking macOS Microphone permissions..."
 echo -e "${YELLOW}→${NC} Please manually verify:"
 echo "   System Preferences → Security & Privacy → Privacy → Microphone"
-echo "   SignalHub should be listed and enabled"
+echo "   TranscriptAI should be listed and enabled"
 echo ""
 
 # 5. Check desktop logs for recent activity
 echo -e "${BLUE}[5/8]${NC} Checking recent desktop logs..."
-# Check both possible locations (dev uses signalhub, prod uses signalhub-desktop)
-DESKTOP_LOG_PROD="$HOME/Library/Application Support/signalhub-desktop/logs/desktop.log"
-DESKTOP_LOG_DEV="$HOME/Library/Application Support/signalhub/logs/desktop.log"
+# Check both possible locations (dev uses transcriptai, prod uses transcriptai-desktop)
+DESKTOP_LOG_PROD="$HOME/Library/Application Support/transcriptai-desktop/logs/desktop.log"
+DESKTOP_LOG_DEV="$HOME/Library/Application Support/transcriptai/logs/desktop.log"
 
 if [ -f "$DESKTOP_LOG_PROD" ]; then
     DESKTOP_LOG="$DESKTOP_LOG_PROD"
@@ -206,10 +206,10 @@ echo "Terminal 1 (Desktop logs):"
 echo -e "${GREEN}tail -f \"$DESKTOP_LOG\" | grep -E '(key|shortcut|permission|dictation_event)'${NC}"
 echo ""
 echo "Terminal 2 (Browser console):"
-echo "Open DevTools in SignalHub → Console tab → Filter by 'DictationController'"
+echo "Open DevTools in TranscriptAI → Console tab → Filter by 'DictationController'"
 echo ""
 echo "Terminal 3 (Backend logs):"
-BACKEND_LOG="$HOME/Library/Application Support/signalhub/signalhub_data/logs/signalhub.log"
+BACKEND_LOG="$HOME/Library/Application Support/transcriptai/transcriptai_data/logs/transcriptai.log"
 if [ -f "$BACKEND_LOG" ]; then
     echo -e "${GREEN}tail -f \"$BACKEND_LOG\" | grep -i transcrib${NC}"
 else

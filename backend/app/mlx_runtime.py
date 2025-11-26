@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import Optional, Tuple
 
-logger = logging.getLogger("signalhub.mlx_runtime")
+logger = logging.getLogger("transcriptai.mlx_runtime")
 
 _DETECTED: bool = False
 _SITE_PACKAGES: Optional[Path] = None
@@ -61,11 +61,11 @@ def _discover_paths() -> Tuple[Optional[Path], Optional[Path]]:
     site_candidates = []
     venv_candidates = []
 
-    env_site = os.getenv("SIGNALHUB_MLX_SITE_PACKAGES")
+    env_site = os.getenv("TRANSCRIPTAI_MLX_SITE_PACKAGES")
     if env_site:
         site_candidates.append(Path(env_site))
 
-    env_venv = os.getenv("SIGNALHUB_MLX_VENV")
+    env_venv = os.getenv("TRANSCRIPTAI_MLX_VENV")
     if env_venv:
         venv_candidates.append(Path(env_venv))
 

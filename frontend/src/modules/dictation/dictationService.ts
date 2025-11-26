@@ -44,7 +44,7 @@ export interface DictationSnippetUploadOptions {
   externalAbortSignal?: AbortSignal
 }
 
-const DEFAULT_TIMEOUT_MS = 15_000  // Increased from 8s to 15s to accommodate CPU transcription
+const DEFAULT_TIMEOUT_MS = 120_000  // Increased to 120s to accommodate MLX model download/loading
 const DEFAULT_MAX_ATTEMPTS = 3
 const BACKOFF_BASE_MS = 500
 

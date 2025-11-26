@@ -126,7 +126,7 @@ export function useDictationController(): DictationControllerState {
     detail: null,
   })
   const fatalErrorRef = useRef<{ count: number; lastErrorId: string | null }>({ count: 0, lastErrorId: null })
-  const dictationBridge = (window as unknown as { signalhubDictation?: any })?.signalhubDictation || null
+  const dictationBridge = (window as unknown as { transcriptaiDictation?: any })?.transcriptaiDictation || null
 
   const log = useCallback((level: LogLevel, message: string, meta: Record<string, unknown> = {}) => {
     const logger = (console[level] as typeof console.log) || console.log
@@ -577,7 +577,7 @@ export function useDictationController(): DictationControllerState {
                 steps: [
                   'Open DevTools console to see "dictation transcript received"',
                   'Check desktop log for "typeText requested" to compare strings',
-                  'Set SIGNALHUB_DICTATION_USE_CLIPBOARD=1 to test clipboard fallback',
+                  'Set TRANSCRIPTAI_DICTATION_USE_CLIPBOARD=1 to test clipboard fallback',
                 ],
               })
             }
@@ -766,8 +766,8 @@ export function useDictationController(): DictationControllerState {
                 message: 'Recording took too long. Release the shortcut sooner and try again.',
               })
               registerFatalError('recording_timeout', 'Recording timed out before completion.', { countsTowardSafeMode: false })
-              if (window.signalhubDictation && typeof window.signalhubDictation.cancelActivePress === 'function') {
-                void window.signalhubDictation
+              if (window.transcriptaiDictation && typeof window.transcriptaiDictation.cancelActivePress === 'function') {
+                void window.transcriptaiDictation
                   .cancelActivePress({
                     reason: 'renderer_timeout',
                     details: { source: 'watchdog' },
@@ -1029,7 +1029,7 @@ export function useDictationController(): DictationControllerState {
         pushNotification({
           severity: 'error',
           title: 'Dictation listener unavailable',
-          message: 'We lost access to the global shortcut listener. Restart SignalHub or re-enable permissions.',
+          message: 'We lost access to the global shortcut listener. Restart TranscriptAI or re-enable permissions.',
         })
         registerFatalError('listener_failure', 'Dictation listener became unavailable.', { countsTowardSafeMode: true })
         break
@@ -1059,9 +1059,9 @@ export function useDictationController(): DictationControllerState {
   }, [state.status, state.indicatorPosition, requestIndicatorPosition, updateDesktopIndicator])
 
   useEffect(() => {
-    if (window.signalhubDictation) {
-      permissionUnsubscribe.current = window.signalhubDictation.onPermissionRequired(handlePermissionEvent)
-      lifecycleUnsubscribe.current = window.signalhubDictation.onLifecycle(handleLifecycleEvent)
+    if (window.transcriptaiDictation) {
+      permissionUnsubscribe.current = window.transcriptaiDictation.onPermissionRequired(handlePermissionEvent)
+      lifecycleUnsubscribe.current = window.transcriptaiDictation.onLifecycle(handleLifecycleEvent)
     }
     return () => {
       if (permissionUnsubscribe.current) {

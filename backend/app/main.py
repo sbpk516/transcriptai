@@ -1,5 +1,5 @@
 """
-Main FastAPI application for SignalHub.
+Main FastAPI application for TranscriptAI.
 """
 import time
 from fastapi import FastAPI, Depends, HTTPException, File, UploadFile, BackgroundTasks
@@ -28,54 +28,24 @@ from .live_events import event_bus, sse_format
 from .live_mic import live_sessions
 from .audio_processor import audio_processor
 from .whisper_backend_selector import get_global_whisper_processor
-from .api import dictation_router
+from .api import dictation_router, models
+# ... imports ...
 
-# Get the global whisper processor (MLX or PyTorch based on environment)
-whisper_processor = get_global_whisper_processor()
-
+# Initialize logging, timers, and core singletons up-front so router registration works during module import.
 _MODULE_IMPORT_STARTED = time.perf_counter()
+logger = logging.getLogger("app.main")
+startup_logger = logging.getLogger("transcriptai.startup")
+whisper_processor = get_global_whisper_processor()
 _warmup_task: Optional[asyncio.Task] = None
 
-# Create necessary directories first
-os.makedirs(settings.upload_dir, exist_ok=True)
-log_dir = os.path.dirname(settings.log_file) or "."
-try:
-    os.makedirs(log_dir, exist_ok=True)
-except Exception:
-    # If settings.log_file resolves to a read-only path, fallback to SIGNALHUB_DATA_DIR/logs
-    data_dir = os.getenv("SIGNALHUB_DATA_DIR")
-    if data_dir:
-        fallback_dir = os.path.join(data_dir, "logs")
-        os.makedirs(fallback_dir, exist_ok=True)
-        settings.log_file = os.path.join(fallback_dir, os.path.basename(settings.log_file))
-
-# Configure logging
-logging.basicConfig(
-    level=getattr(logging, settings.log_level),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(), logging.FileHandler(settings.log_file)]
-)
-logger = logging.getLogger(__name__)
-startup_logger = logging.getLogger("signalhub.startup")
-startup_logger.info(
-    "[STARTUP] phase=module_import elapsed=%.3fs", time.perf_counter() - _MODULE_IMPORT_STARTED
-)
-if hasattr(whisper_processor, "_MODULE_IMPORT_STARTED") and hasattr(whisper_processor, "_MODULE_IMPORT_ENDED"):
-    startup_logger.info(
-        "[STARTUP] phase=whisper_module_import elapsed=%.3fs",
-        (whisper_processor._MODULE_IMPORT_ENDED or 0) - whisper_processor._MODULE_IMPORT_STARTED,
-    )
-
-# Create FastAPI app
+# FastAPI application instance
 app = FastAPI(
     title=settings.project_name,
-    description="Real-time call intelligence platform",
-    version="1.0.0",
     debug=settings.debug,
-    max_request_size=settings.max_file_size_bytes,
 )
 
 app.include_router(dictation_router, prefix="/api/v1")
+app.include_router(models.router, prefix="/api/v1")
 
 # Add CORS middleware (for future frontend)
 app.add_middleware(
@@ -145,7 +115,7 @@ async def startup_event():
     """Initialize application on startup."""
     start_ts = time.perf_counter()
     startup_logger.info("[STARTUP] phase=fastapi_startup status=begin")
-    logger.info("Starting SignalHub application...")
+    logger.info("Starting TranscriptAI application...")
     try:
         # Log resolved database URL (desktop/sqlite shows file path)
         try:
@@ -209,7 +179,7 @@ async def shutdown_event():
 async def root():
     """Root endpoint - welcome message."""
     return {
-        "message": "Welcome to SignalHub - Contact Center Intelligence Platform",
+        "message": "Welcome to TranscriptAI - Contact Center Intelligence Platform",
         "version": "1.0.0",
         "status": "running",
         "timestamp": datetime.now().isoformat()
@@ -337,7 +307,7 @@ async def get_call_status(call_id: str):
 async def transcription_stream(call_id: str):
     """SSE stream of transcription events for a call.
 
-    Requires SIGNALHUB_LIVE_TRANSCRIPTION=1. If disabled, returns 404.
+    Requires TRANSCRIPTAI_LIVE_TRANSCRIPTION=1. If disabled, returns 404.
     """
     if not is_live_transcription_enabled():
         raise HTTPException(status_code=404, detail="Live transcription disabled")
@@ -358,7 +328,7 @@ async def transcription_stream(call_id: str):
 async def transcription_mock_start(call_id: str, background: BackgroundTasks, chunks: int = 5, interval_ms: int = 800):
     """Start a mock producer that emits N partial events + complete for demo/testing.
 
-    Only active when SIGNALHUB_LIVE_TRANSCRIPTION=1.
+    Only active when TRANSCRIPTAI_LIVE_TRANSCRIPTION=1.
     """
     if not is_live_transcription_enabled():
         raise HTTPException(status_code=404, detail="Live transcription disabled")
@@ -1030,6 +1000,54 @@ async def get_pipeline_results(
         results = []
         for call in calls:
             try:
+                # Get transcript for this call
+                transcript = None
+                try:
+                    transcript_record = db.query(Transcript).filter(Transcript.call_id == call.call_id).first()
+                    if transcript_record and transcript_record.text:
+                        transcript = {
+                            "transcription_text": transcript_record.text,
+                            "confidence": transcript_record.confidence or 0,
+                            "language": transcript_record.language or "en"
+                        }
+                except Exception as transcript_err:
+                    logger.debug(f"[RESULTS API] Could not fetch transcript for {call.call_id}: {transcript_err}")
+                
+                # Get analysis for this call
+                analysis = None
+                try:
+                    from .models import Analysis
+                    analysis_record = db.query(Analysis).filter(Analysis.call_id == call.call_id).first()
+                    if analysis_record:
+                        try:
+                            keywords = json.loads(analysis_record.keywords) if analysis_record.keywords else []
+                        except Exception:
+                            keywords = []
+                        try:
+                            topics = json.loads(analysis_record.topics) if analysis_record.topics else []
+                        except Exception:
+                            topics = []
+                        analysis = {
+                            "sentiment": {
+                                "overall": analysis_record.sentiment or "neutral",
+                                "score": analysis_record.sentiment_score or 0
+                            },
+                            "intent": {
+                                "detected": analysis_record.intent or "unknown",
+                                "confidence": (analysis_record.intent_confidence or 0) / 100.0
+                            },
+                            "risk": {
+                                "escalation_risk": analysis_record.escalation_risk or "low",
+                                "risk_score": analysis_record.risk_score or 0,
+                                "urgency_level": analysis_record.urgency_level or "low",
+                                "compliance_risk": analysis_record.compliance_risk or "none"
+                            },
+                            "keywords": keywords,
+                            "topics": topics
+                        }
+                except Exception as analysis_err:
+                    logger.debug(f"[RESULTS API] Could not fetch analysis for {call.call_id}: {analysis_err}")
+                
                 result = {
                     "call_id": call.call_id,
                     "status": call.status,
@@ -1044,8 +1062,8 @@ async def get_pipeline_results(
                         "duration_seconds": call.duration or 0,
                         "duration": _format_duration(call.duration)
                     },
-                    "transcription": None,  # Placeholder - we'll enhance this later
-                    "nlp_analysis": None    # Placeholder - we'll enhance this later
+                    "transcription": transcript,
+                    "nlp_analysis": analysis
                 }
                 results.append(result)
                 logger.debug(f"[RESULTS API] Processed call {call.call_id} successfully")

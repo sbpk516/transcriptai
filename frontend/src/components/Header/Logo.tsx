@@ -14,7 +14,7 @@ const Logo: React.FC<LogoProps> = ({ size = 'md', onClick }) => {
 
   const logoContent = (
     <div className={`text-blue-600 ${sizeClasses[size]} cursor-pointer hover:text-blue-700 transition-colors`}>
-      SignalHub
+      TranscriptAI
     </div>
   )
 

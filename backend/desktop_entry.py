@@ -2,16 +2,23 @@
 """
 Desktop entrypoint for bundled backend.
 
-Reads SIGNALHUB_MODE, SIGNALHUB_PORT, SIGNALHUB_DATA_DIR from environment and
+Reads TRANSCRIPTAI_MODE, TRANSCRIPTAI_PORT, TRANSCRIPTAI_DATA_DIR from environment and
 starts the FastAPI app using uvicorn bound to 127.0.0.1.
 
 This avoids relying on repository files like config.js when running from a packaged app.
 """
 import os
 import sys
+import traceback
 from typing import Optional
+from datetime import datetime
 
-import uvicorn
+try:
+    import uvicorn
+except ImportError as e:
+    print(f"❌ CRITICAL: Failed to import uvicorn: {e}")
+    print("   Please install uvicorn: pip install uvicorn")
+    sys.exit(1)
 
 APP_IMPORT_ERROR = None
 app = None  # type: ignore
@@ -30,14 +37,34 @@ def getenv_int(name: str, default: int) -> int:
         return default
 
 
+def write_error_log(data_dir: Optional[str], error_type: str, error_msg: str, trace: Optional[str] = None) -> None:
+    """Write error to log file with timestamp and full traceback."""
+    if not data_dir:
+        return
+    try:
+        logs_dir = os.path.join(data_dir, "logs")
+        os.makedirs(logs_dir, exist_ok=True)
+        error_file = os.path.join(logs_dir, f"backend_error_{error_type}.txt")
+        with open(error_file, "a") as f:
+            f.write(f"\n{'='*60}\n")
+            f.write(f"Timestamp: {datetime.now().isoformat()}\n")
+            f.write(f"Error Type: {error_type}\n")
+            f.write(f"Error Message: {error_msg}\n")
+            if trace:
+                f.write(f"\nTraceback:\n{trace}\n")
+            f.write(f"{'='*60}\n")
+    except Exception:
+        pass  # Silently fail if we can't write logs
+
+
 def main() -> int:
     # Desktop mode env
-    os.environ.setdefault("SIGNALHUB_MODE", "desktop")
+    os.environ.setdefault("TRANSCRIPTAI_MODE", "desktop")
 
-    port = getenv_int("SIGNALHUB_PORT", 8001)
+    port = getenv_int("TRANSCRIPTAI_PORT", 8001)
     host = "127.0.0.1"
 
-    data_dir = os.getenv("SIGNALHUB_DATA_DIR")
+    data_dir = os.getenv("TRANSCRIPTAI_DATA_DIR")
     if data_dir:
         os.makedirs(data_dir, exist_ok=True)
         logs_dir = os.path.join(data_dir, "logs")
@@ -46,17 +73,35 @@ def main() -> int:
         # Sentinel: prove writeability and capture earliest failures
         try:
             with open(os.path.join(logs_dir, "backend_boot.txt"), "a") as f:
-                f.write("boot\n")
+                f.write(f"boot at {datetime.now().isoformat()}\n")
         except Exception as se:
             print(f"❌ Log dir not writable: {se}")
+            write_error_log(data_dir, "startup", f"Log dir not writable: {se}")
 
     # Import app only after logs dir exists so we can record any error
     global app
     if app is None:
         try:
             print("📦 Importing FastAPI app...")
-            import sys
             sys.stdout.flush()
+
+            # Check for critical dependencies before importing
+            try:
+                import fastapi
+            except ImportError as e:
+                error_msg = f"Missing dependency: fastapi - {e}"
+                print(f"❌ {error_msg}")
+                write_error_log(data_dir, "import", error_msg, traceback.format_exc())
+                return 1
+
+            try:
+                from pydantic_settings import BaseSettings
+            except ImportError as e:
+                error_msg = f"Missing dependency: pydantic_settings - {e}"
+                print(f"❌ {error_msg}")
+                print("   Please install: pip install pydantic-settings")
+                write_error_log(data_dir, "import", error_msg, traceback.format_exc())
+                return 1
 
             if activate_mlx_site_packages:
                 try:
@@ -66,33 +111,60 @@ def main() -> int:
                     else:
                         print("ℹ️  MLX venv not available, continuing without MLX")
                 except Exception as runtime_err:
-                    print(f"⚠️  Failed to activate MLX venv: {runtime_err}")
+                    error_msg = f"Failed to activate MLX venv: {runtime_err}"
+                    print(f"⚠️  {error_msg}")
+                    write_error_log(data_dir, "mlx", error_msg, traceback.format_exc())
 
             from app.main import app as _app  # type: ignore
             app = _app
             print("✅ FastAPI app imported successfully")
             sys.stdout.flush()
+        except ImportError as e:
+            error_msg = f"Failed to import FastAPI app module: {e}"
+            print(f"❌ {error_msg}")
+            trace = traceback.format_exc()
+            print(trace)
+            write_error_log(data_dir, "import", error_msg, trace)
+            return 1
         except Exception as e:
-            # Also write error to logs if possible
-            err = f"Failed to import FastAPI app: {e}"
-            print(f"❌ {err}")
-            if data_dir:
-                try:
-                    with open(os.path.join(data_dir, "logs", "backend_import_error.txt"), "a") as f:
-                        f.write(str(err) + "\n")
-                except Exception:
-                    pass
+            error_msg = f"Failed to import FastAPI app: {e}"
+            print(f"❌ {error_msg}")
+            trace = traceback.format_exc()
+            print(trace)
+            write_error_log(data_dir, "import", error_msg, trace)
             return 1
 
     print(f"🚀 Starting bundled backend on http://{host}:{port}")
     sys.stdout.flush()
+    
+    # Verify port is available before starting
+    import socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind((host, port))
+        sock.close()
+    except OSError as e:
+        error_msg = f"Port {port} is not available: {e}"
+        print(f"❌ {error_msg}")
+        write_error_log(data_dir, "port", error_msg, traceback.format_exc())
+        return 1
+    
     try:
         print("🔧 Calling uvicorn.run()...")
         sys.stdout.flush()
         uvicorn.run(app, host=host, port=port, log_level="info")
         return 0
+    except OSError as e:
+        error_msg = f"Failed to bind to port {port}: {e}"
+        print(f"❌ {error_msg}")
+        write_error_log(data_dir, "startup", error_msg, traceback.format_exc())
+        return 1
     except Exception as e:
-        print(f"❌ Error starting bundled backend: {e}")
+        error_msg = f"Error starting bundled backend: {e}"
+        print(f"❌ {error_msg}")
+        trace = traceback.format_exc()
+        print(trace)
+        write_error_log(data_dir, "startup", error_msg, trace)
         return 1
 
 

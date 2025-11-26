@@ -1,1 +1,1 @@
-# SignalHub Backend Package
+# TranscriptAI Backend Package

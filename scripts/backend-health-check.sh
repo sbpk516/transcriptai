@@ -3,7 +3,7 @@
 # Backend Health Check Script
 # Run this before starting backend development to prevent issues
 
-echo "🔍 Backend Health Check - SignalHub"
+echo "🔍 Backend Health Check - TranscriptAI"
 echo "==================================="
 
 # Check 1: Directory
@@ -13,7 +13,7 @@ if [[ "$CURRENT_DIR" == *"/backend" ]]; then
     echo "✅ Correct directory: $CURRENT_DIR"
 else
     echo "❌ Wrong directory: $CURRENT_DIR"
-    echo "   Should be in: .../signalhub/backend"
+    echo "   Should be in: .../transcriptai/backend"
     echo "   Run: cd backend"
     exit 1
 fi
@@ -88,11 +88,11 @@ fi
 # Check 7: Database connection (if applicable)
 echo "🗄️  Checking database..."
 if command -v psql > /dev/null 2>&1; then
-    if psql -d signalhub -c "SELECT 1;" > /dev/null 2>&1; then
+    if psql -d transcriptai -c "SELECT 1;" > /dev/null 2>&1; then
         echo "✅ Database connection successful"
     else
         echo "⚠️  Database connection failed"
-        echo "   Check PostgreSQL is running and signalhub database exists"
+        echo "   Check PostgreSQL is running and transcriptai database exists"
     fi
 else
     echo "ℹ️  PostgreSQL not installed or not in PATH"

@@ -2,7 +2,7 @@
 Backend selector for Whisper transcription.
 
 Dynamically selects between PyTorch and MLX backends based on:
-1. Environment variable SIGNALHUB_USE_MLX
+1. Environment variable TRANSCRIPTAI_USE_MLX
 2. Platform detection (macOS with Apple Silicon)
 3. Availability of MLX libraries
 
@@ -14,7 +14,7 @@ import platform
 import logging
 from typing import Union
 
-logger = logging.getLogger('signalhub.whisper_backend_selector')
+logger = logging.getLogger('transcriptai.whisper_backend_selector')
 
 # Try to import both backends
 _PYTORCH_AVAILABLE = False
@@ -30,10 +30,19 @@ _mlx_probe = lambda: False  # type: ignore
 
 try:
     from .whisper_processor_mlx import WhisperProcessorMLX, is_mlx_available as _mlx_available_probe
-    _MLX_AVAILABLE = _mlx_available_probe()
-    _mlx_probe = _mlx_available_probe
-except ImportError as e:
-    logger.debug(f"MLX Whisper backend not available: {e}")
+    # Probe MLX availability - this may fail due to import errors or version mismatches
+    # We catch all exceptions to prevent startup crashes
+    try:
+        _MLX_AVAILABLE = _mlx_available_probe()
+        _mlx_probe = _mlx_available_probe
+    except Exception as probe_error:
+        logger.debug(f"MLX availability probe failed: {probe_error} (type: {type(probe_error).__name__})")
+        _MLX_AVAILABLE = False
+        _mlx_probe = lambda: False  # type: ignore
+except (ImportError, AttributeError, Exception) as e:
+    logger.debug(f"MLX Whisper backend not available: {e} (type: {type(e).__name__})")
+    _MLX_AVAILABLE = False
+    _mlx_probe = lambda: False  # type: ignore
 
 
 def should_use_mlx() -> bool:
@@ -41,8 +50,8 @@ def should_use_mlx() -> bool:
     Determine if MLX backend should be used.
     
     Decision criteria:
-    1. If SIGNALHUB_USE_MLX=1, use MLX (if available)
-    2. If SIGNALHUB_USE_MLX=0, use PyTorch
+    1. If TRANSCRIPTAI_USE_MLX=1, use MLX (if available)
+    2. If TRANSCRIPTAI_USE_MLX=0, use PyTorch
     3. If not set, auto-detect:
        - Use MLX on macOS with Apple Silicon (if available)
        - Otherwise use PyTorch
@@ -51,24 +60,24 @@ def should_use_mlx() -> bool:
         True if MLX should be used, False for PyTorch
     """
     # Explicit environment variable takes precedence
-    env_mlx = os.getenv("SIGNALHUB_USE_MLX", "").strip()
+    env_mlx = os.getenv("TRANSCRIPTAI_USE_MLX", "").strip()
     mlx_available = _mlx_probe()
     global _MLX_AVAILABLE
     _MLX_AVAILABLE = mlx_available
     
     # Debug logging to diagnose environment variable issues
-    logger.info(f"🔍 [MLX ENV CHECK] SIGNALHUB_USE_MLX='{env_mlx}' (from os.getenv)")
+    logger.info(f"🔍 [MLX ENV CHECK] TRANSCRIPTAI_USE_MLX='{env_mlx}' (from os.getenv)")
     
     if env_mlx == "1":
         if mlx_available:
-            logger.info("MLX backend explicitly enabled via SIGNALHUB_USE_MLX=1")
+            logger.info("MLX backend explicitly enabled via TRANSCRIPTAI_USE_MLX=1")
             return True
         else:
             logger.warning("MLX backend requested but not available, falling back to PyTorch")
             return False
     
     if env_mlx == "0":
-        logger.info("MLX backend explicitly disabled via SIGNALHUB_USE_MLX=0")
+        logger.info("MLX backend explicitly disabled via TRANSCRIPTAI_USE_MLX=0")
         return False
     
     # Auto-enable MLX on Apple Silicon (when env var not set)
@@ -135,13 +144,23 @@ def get_backend_info() -> dict:
         "should_use_mlx": should_use_mlx(),
         "platform": platform.system(),
         "machine": platform.machine(),
-        "env_mlx_flag": os.getenv("SIGNALHUB_USE_MLX", "not_set"),
+        "env_mlx_flag": os.getenv("TRANSCRIPTAI_USE_MLX", "not_set"),
     }
 
 
 # Global processor instance (lazy-loaded for backward compatibility)
 _global_processor = None
 
+
+from pathlib import Path
+import json
+from .config import settings
+
+def get_model_preference_path() -> Path:
+    """Get path to the model preference file."""
+    # Use the upload_dir (which is in the data dir) as a base
+    data_dir = Path(settings.upload_dir).parent
+    return data_dir / "model_preference.json"
 
 def get_global_whisper_processor():
     """
@@ -163,6 +182,18 @@ def get_global_whisper_processor():
         # Override with 'tiny' if MLX is being used (for performance)
         if should_use_mlx():
             model_name = "tiny"
+            
+            # Check for persisted preference
+            try:
+                pref_path = get_model_preference_path()
+                if pref_path.exists():
+                    with open(pref_path, 'r') as f:
+                        data = json.load(f)
+                        if "model_name" in data:
+                            model_name = data["model_name"]
+                            logger.info(f"Loaded persisted model preference: {model_name}")
+            except Exception as e:
+                logger.warning(f"Failed to load model preference: {e}")
         
         _global_processor = get_whisper_processor(model_name=model_name)
         logger.info(f"Global Whisper processor created: {_global_processor.__class__.__name__}")

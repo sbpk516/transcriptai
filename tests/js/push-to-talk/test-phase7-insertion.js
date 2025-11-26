@@ -12,7 +12,7 @@ const { TestFramework, TestUtils } = require('./test-framework');
 const framework = new TestFramework('PHASE 7: Text Insertion');
 
 // Paths
-const LOG_PATH = path.join(os.homedir(), 'Library/Application Support/signalhub/logs/desktop.log');
+const LOG_PATH = path.join(os.homedir(), 'Library/Application Support/transcriptai/logs/desktop.log');
 
 /**
  * Test 7.1: Upload success handling

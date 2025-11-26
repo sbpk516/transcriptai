@@ -12,7 +12,7 @@ const { TestFramework, TestUtils } = require('./test-framework');
 const framework = new TestFramework('PHASE 2: Permission Flow');
 
 // Paths
-const LOG_PATH = path.join(os.homedir(), 'Library/Application Support/signalhub/logs/desktop.log');
+const LOG_PATH = path.join(os.homedir(), 'Library/Application Support/transcriptai/logs/desktop.log');
 
 /**
  * Test 2.1: Permission request emission
@@ -65,7 +65,7 @@ framework.test('macOS Accessibility check', async () => {
   if (lastLines.includes('"accessibility":false') || lastLines.includes('"accessibilityOk":false')) {
     return {
       pass: false,
-      message: 'Accessibility permission not granted. Go to System Preferences → Security & Privacy → Privacy → Accessibility and enable SignalHub.',
+      message: 'Accessibility permission not granted. Go to System Preferences → Security & Privacy → Privacy → Accessibility and enable TranscriptAI.',
     };
   }
   
@@ -98,7 +98,7 @@ framework.test('macOS Microphone check', async () => {
   if (lastLines.includes('"microphone":false') || lastLines.includes('"micOk":false')) {
     return {
       pass: false,
-      message: 'Microphone permission not granted. Go to System Preferences → Security & Privacy → Privacy → Microphone and enable SignalHub.',
+      message: 'Microphone permission not granted. Go to System Preferences → Security & Privacy → Privacy → Microphone and enable TranscriptAI.',
     };
   }
   

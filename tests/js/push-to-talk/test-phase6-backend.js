@@ -13,8 +13,8 @@ const { TestFramework, TestUtils } = require('./test-framework');
 const framework = new TestFramework('PHASE 6: Backend Transcription');
 
 // Paths
-const BACKEND_LOG_PATH = path.join(os.homedir(), 'Library/Application Support/signalhub/signalhub_data/logs/signalhub.log');
-const BACKEND_LOG_ALT = path.join(os.homedir(), 'Library/Application Support/signalhub/logs/signalhub.log');
+const BACKEND_LOG_PATH = path.join(os.homedir(), 'Library/Application Support/transcriptai/transcriptai_data/logs/transcriptai.log');
+const BACKEND_LOG_ALT = path.join(os.homedir(), 'Library/Application Support/transcriptai/logs/transcriptai.log');
 
 async function getBackendLog() {
   for (const logPath of [BACKEND_LOG_PATH, BACKEND_LOG_ALT]) {

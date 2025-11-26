@@ -1,5 +1,5 @@
 """
-Centralized configuration for SignalHub backend
+Centralized configuration for TranscriptAI backend
 Change port values here to update all backend references
 """
 import os
@@ -20,7 +20,7 @@ BACKEND_HOST = os.environ.get('BACKEND_HOST', '127.0.0.1')
 API_BASE_URL = os.environ.get('API_BASE_URL', f'http://{BACKEND_HOST}:{BACKEND_PORT}')
 
 # Database Configuration
-DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///./signalhub.db')
+DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///./transcriptai.db')
 
 # Logging Configuration
 LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO')

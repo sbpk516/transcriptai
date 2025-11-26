@@ -21,7 +21,7 @@ class TranscriptionEventBus:
         self._buffers: Dict[str, Deque[Dict[str, Any]]] = {}
         self._buffer_size = buffer_size
         self._locks: Dict[str, asyncio.Lock] = {}
-        self._logger = logging.getLogger('signalhub.live_events')
+        self._logger = logging.getLogger('transcriptai.live_events')
 
     def _ensure(self, call_id: str) -> None:
         if call_id not in self._queues:

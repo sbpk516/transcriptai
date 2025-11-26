@@ -1,5 +1,5 @@
 """
-Pipeline Orchestrator for SignalHub Phase 1.3.
+Pipeline Orchestrator for TranscriptAI Phase 1.3.
 Central controller for the complete audio processing pipeline.
 Manages the flow: Upload → Audio Processing → Transcription → Database Storage
 """
@@ -27,7 +27,7 @@ from .pipeline_monitor import pipeline_monitor
 from .pipeline_logger import pipeline_logger
 
 # Configure logger for this module
-logger = logging.getLogger('signalhub.pipeline_orchestrator')
+logger = logging.getLogger('transcriptai.pipeline_orchestrator')
 
 
 class PipelineStatusTracker:
@@ -178,7 +178,7 @@ class PipelineDebugLogger:
     """
     
     def __init__(self):
-        # Use the centralized debug helper's directory which respects SIGNALHUB_DATA_DIR
+        # Use the centralized debug helper's directory which respects TRANSCRIPTAI_DATA_DIR
         from .debug_utils import debug_helper as _dh
         self.debug_dir = _dh.debug_dir
         logger.info(f"Pipeline debug logger initialized with directory: {self.debug_dir}")
@@ -459,8 +459,8 @@ class AudioProcessingPipeline:
             if live_enabled and not batch_only:
                 # Chunked progressive transcription with SSE emits
                 import os
-                chunk_sec = int(os.getenv("SIGNALHUB_LIVE_CHUNK_SEC", "3600") or 3600)  # 60 minutes default
-                stride_sec = int(os.getenv("SIGNALHUB_LIVE_STRIDE_SEC", "60") or 60)  # 1 minute overlap (1.7% overlap)
+                chunk_sec = int(os.getenv("TRANSCRIPTAI_LIVE_CHUNK_SEC", "3600") or 3600)  # 60 minutes default
+                stride_sec = int(os.getenv("TRANSCRIPTAI_LIVE_STRIDE_SEC", "60") or 60)  # 1 minute overlap (1.7% overlap)
                 final_parts: List[str] = []
 
                 def _do_chunked():
@@ -682,10 +682,37 @@ class AudioProcessingPipeline:
             
             # Store transcript with retry logic
             # Get transcription data from pipeline data
-            if call_id in self.pipeline_data and "transcription_data" in self.pipeline_data[call_id]:
-                transcription_data = self.pipeline_data[call_id]["transcription_data"]
-            else:
+            transcription_data = None
+            if call_id in self.pipeline_data:
+                # Try transcription_data first (raw Whisper result)
+                if "transcription_data" in self.pipeline_data[call_id]:
+                    transcription_data = self.pipeline_data[call_id]["transcription_data"]
+                    logger.info(f"DEBUG: Using transcription_data, text length: {len(transcription_data.get('text', ''))}")
+                # Fallback to transcription_result if transcription_data not available
+                elif "transcription_result" in self.pipeline_data[call_id]:
+                    transcription_result = self.pipeline_data[call_id]["transcription_result"]
+                    # Extract from transcription_result structure
+                    if "transcript" in transcription_result:
+                        transcription_data = transcription_result["transcript"]
+                        logger.info(f"DEBUG: Using transcription_result.transcript, text length: {len(transcription_data.get('text', ''))}")
+                    elif "transcription_text" in transcription_result:
+                        # Convert transcription_text to transcription_data format
+                        transcription_data = {
+                            "text": transcription_result.get("transcription_text", ""),
+                            "language": transcription_result.get("language", "en"),
+                            "confidence_score": 0.0
+                        }
+                        logger.info(f"DEBUG: Using transcription_result.transcription_text, text length: {len(transcription_data.get('text', ''))}")
+            
+            if not transcription_data:
+                logger.warning(f"DEBUG: No transcription data found in pipeline_data for {call_id}, using empty default")
                 transcription_data = {"text": "", "language": "en", "confidence_score": 0.0}
+            
+            # Ensure text field exists and is not None
+            if not transcription_data.get("text"):
+                logger.warning(f"DEBUG: Transcription data has empty text for {call_id}")
+                logger.warning(f"DEBUG: Transcription data keys: {list(transcription_data.keys())}")
+                logger.warning(f"DEBUG: Full transcription_data: {transcription_data}")
             
             transcript_result = await self._retry_operation(
                 lambda: self.db_integration.store_transcript(call_id, transcription_data),

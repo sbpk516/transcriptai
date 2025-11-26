@@ -1,7 +1,7 @@
 {
-  "name": "signalhub-backend",
+  "name": "transcriptai-backend",
   "version": "1.0.0",
-  "description": "SignalHub Backend API",
+  "description": "TranscriptAI Backend API",
   "scripts": {
     "dev": "python start.py",
     "dev:safe": "bash ../scripts/backend-health-check.sh && python -m uvicorn app.main:app --reload --port 8001",
@@ -13,14 +13,14 @@
     "lint": "python -m flake8 app/",
     "clean": "find . -type f -name '*.pyc' -delete && find . -type d -name '__pycache__' -delete",
     "restart": "pkill -f uvicorn && python start.py",
-    "logs": "tail -f logs/signalhub.log",
+    "logs": "tail -f logs/transcriptai.log",
     "health": "curl -s http://localhost:8001/health",
     "install-deps": "pip install -r requirements.txt",
     "update-deps": "pip install --upgrade -r requirements.txt",
     "db:reset": "python backend/scripts/reset_db.py",
     "db:clear": "python backend/scripts/clear_db.py"
   },
-  "keywords": ["api", "fastapi", "python", "signalhub"],
-  "author": "SignalHub Team",
+  "keywords": ["api", "fastapi", "python", "transcriptai"],
+  "author": "TranscriptAI Team",
   "license": "MIT"
 }

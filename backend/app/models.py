@@ -1,5 +1,5 @@
 """
-Database models for SignalHub application.
+Database models for TranscriptAI application.
 """
 from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean
 from sqlalchemy.sql import func

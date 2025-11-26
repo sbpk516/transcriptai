@@ -41,7 +41,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle, activePage, onPageC
         <div className="flex flex-col h-full">
           {/* Header */}
           <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200">
-            <span className="sr-only">SignalHub navigation</span>
+            <span className="sr-only">TranscriptAI navigation</span>
             <button
               onClick={onToggle}
               className="lg:hidden p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100"
@@ -91,7 +91,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle, activePage, onPageC
           {/* Footer */}
           <div className="p-4 border-t border-gray-200">
             <div className="text-xs text-gray-500 text-center">
-              <div className="mb-2">SignalHub v1.0</div>
+              <div className="mb-2">TranscriptAI v1.0</div>
               <div className="flex items-center justify-center space-x-2">
                 <div className="w-2 h-2 bg-green-400 rounded-full"></div>
                 <span>System Online</span>

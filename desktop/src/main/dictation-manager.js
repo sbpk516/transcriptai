@@ -107,7 +107,7 @@ class DictationManager extends EventEmitter {
         })
       }
 
-      if (process.env.SIGNALHUB_DICTATION_USE_CLIPBOARD === '1' && mode !== 'paste') {
+      if (process.env.TRANSCRIPTAI_DICTATION_USE_CLIPBOARD === '1' && mode !== 'paste') {
         if (!clipboardTipLogged) {
           clipboardTipLogged = true
           this._log.info('dictation clipboard fallback enabled', {

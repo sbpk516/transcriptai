@@ -17,7 +17,7 @@ cd "$ROOT/backend"
 # PyInstaller one-file build using desktop entrypoint (bundle deps)
 pyinstaller -y --clean \
   --onefile \
-  --name signalhub-backend \
+  --name transcriptai-backend \
   --add-data "app:app" \
   --collect-all fastapi \
   --collect-all starlette \
@@ -35,7 +35,10 @@ pyinstaller -y --clean \
   --collect-all soundfile \
   --collect-all nltk \
   --collect-all vaderSentiment \
+  --hidden-import fastapi \
   --hidden-import fastapi.middleware.cors \
+  --hidden-import fastapi.applications \
+  --hidden-import fastapi.routing \
   --hidden-import starlette.middleware.cors \
   --hidden-import multipart \
   --hidden-import uvicorn \
@@ -50,14 +53,15 @@ pyinstaller -y --clean \
   --hidden-import soundfile \
   --hidden-import nltk \
   --hidden-import vaderSentiment \
+  --hidden-import vaderSentiment.vaderSentiment \
   --hidden-import ffmpeg \
   desktop_entry.py
 
 # Move artifact
-if [[ -f dist/signalhub-backend ]]; then
-  mv dist/signalhub-backend "$OUT/"
-elif [[ -f dist/signalhub-backend.exe ]]; then
-  mv dist/signalhub-backend.exe "$OUT/"
+if [[ -f dist/transcriptai-backend ]]; then
+  mv dist/transcriptai-backend "$OUT/"
+elif [[ -f dist/transcriptai-backend.exe ]]; then
+  mv dist/transcriptai-backend.exe "$OUT/"
 fi
 
 echo "Done. Place the binary under backend/bin before packaging the desktop app."

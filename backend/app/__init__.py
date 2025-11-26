@@ -1,1 +1,1 @@
-# SignalHub App Package
+# TranscriptAI App Package

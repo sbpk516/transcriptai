@@ -18,10 +18,10 @@ echo ""
 
 # Test 1: Backend code fix
 echo -e "${YELLOW}[1/2] Testing backend media_type normalization...${NC}"
-cd /Users/bsachi867/Documents/ai_ground/signalhub
+cd /Users/bsachi867/Documents/ai_ground/transcriptai
 source venv/bin/activate
 
-if python tests/test_media_type_fix.py > /tmp/media_type_test.log 2>&1; then
+if python tests/python/test_media_type_fix.py > /tmp/media_type_test.log 2>&1; then
     echo -e "${GREEN}✅ Backend code fix verified${NC}"
     echo "   - Accepts 'audio/webm;codecs=opus'"
     echo "   - Normalizes media types correctly"
@@ -36,7 +36,7 @@ echo ""
 # Test 2: Desktop app built with all fixes
 echo -e "${YELLOW}[2/2] Verifying desktop app includes all fixes...${NC}"
 
-APP_PATH="/Users/bsachi867/Documents/ai_ground/signalhub/desktop/dist/mac-arm64/SignalHub.app"
+APP_PATH="/Users/bsachi867/Documents/ai_ground/transcriptai/desktop/dist/mac-arm64/TranscriptAI.app"
 BUILD_TIME=$(stat -f "%Sm" -t "%Y-%m-%d %H:%M:%S" "$APP_PATH")
 
 echo -e "${GREEN}✅ Desktop app built at: ${BUILD_TIME}${NC}"
@@ -67,7 +67,7 @@ echo -e "${GREEN}${BOLD}✅ ALL FIXES VERIFIED PROGRAMMATICALLY${NC}"
 echo -e "${BLUE}══════════════════════════════════════════════════════════${NC}"
 echo ""
 echo -e "${YELLOW}Next Steps:${NC}"
-echo "1. Quit SignalHub app (Cmd+Q)"
+echo "1. Quit TranscriptAI app (Cmd+Q)"
 echo "2. Launch: open '$APP_PATH'"
 echo "3. Test push-to-talk: Hold CMD+Option, speak, release"
 echo "4. Text should appear in your editor!"

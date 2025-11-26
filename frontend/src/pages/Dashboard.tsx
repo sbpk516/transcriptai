@@ -188,7 +188,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
               Welcome
             </span>
             <h1 className="text-3xl font-semibold tracking-tight bg-gradient-to-r from-blue-600 via-purple-500 to-pink-500 bg-clip-text text-transparent">
-              SignalHub · Your Audio Analysis Platform
+              TranscriptAI · Your Audio Analysis Platform
             </h1>
             <p className="text-sm text-gray-500">Capture audio, transcribe instantly, and surface insights the moment your sessions finish.</p>
           </div>

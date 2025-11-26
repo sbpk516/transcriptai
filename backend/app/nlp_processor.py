@@ -1,5 +1,5 @@
 """
-NLP Processor for SignalHub Phase 3: NLP Analysis.
+NLP Processor for TranscriptAI Phase 3: NLP Analysis.
 
 This module provides core NLP processing capabilities including:
 - Text preprocessing and cleaning
@@ -37,7 +37,7 @@ class NLPProcessor:
     """
     Core NLP processor for text analysis and insights extraction.
     
-    This class provides the foundation for all NLP operations in SignalHub,
+    This class provides the foundation for all NLP operations in TranscriptAI,
     including text preprocessing, model management, and basic analysis.
     """
     
@@ -103,7 +103,7 @@ class NLPProcessor:
     def _initialize_nltk(self):
         """Initialize NLTK components and download required data."""
         try:
-            offline_mode = os.getenv("SIGNALHUB_MODE", "").lower() == "desktop" or os.getenv("SIGNALHUB_OFFLINE", "0") == "1"
+            offline_mode = os.getenv("TRANSCRIPTAI_MODE", "").lower() == "desktop" or os.getenv("TRANSCRIPTAI_OFFLINE", "0") == "1"
             if offline_mode:
                 # In offline/desktop mode, skip downloads to avoid startup delays/timeouts
                 self.logger.info("NLTK offline mode: skipping downloads; using bundled resources or fallbacks")

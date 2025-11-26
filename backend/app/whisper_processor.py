@@ -1,5 +1,5 @@
 """
-Whisper integration module for SignalHub Phase 1.2.2.
+Whisper integration module for TranscriptAI Phase 1.2.2.
 Provides comprehensive speech-to-text functionality using OpenAI Whisper.
 """
 import base64
@@ -31,11 +31,23 @@ from .audio_processor import audio_processor
 from .logging_config import log_function_call, PerformanceMonitor
 
 # Configure logger for this module
-logger = logging.getLogger('signalhub.whisper_processor')
+logger = logging.getLogger('transcriptai.whisper_processor')
 _MODULE_IMPORT_ENDED = time.perf_counter()
 
+
+def _whisper_cache_root() -> Path:
+    """
+    Resolve the cache directory used by whisper for storing model checkpoints.
+
+    Mirror whisper.load_model behaviour: default to $XDG_CACHE_HOME/whisper or
+    ~/.cache/whisper when the XDG path is not provided.
+    """
+    default_cache = Path(os.path.expanduser("~")) / ".cache"
+    base = Path(os.getenv("XDG_CACHE_HOME", str(default_cache)))
+    return base / "whisper"
+
 def _transcription_enabled() -> bool:
-    return os.getenv("SIGNALHUB_ENABLE_TRANSCRIPTION", "0") == "1"
+    return os.getenv("TRANSCRIPTAI_ENABLE_TRANSCRIPTION", "0") == "1"
 
 
 def _forced_language() -> Optional[str]:
@@ -43,14 +55,14 @@ def _forced_language() -> Optional[str]:
 
     Returns a language code (e.g., 'en') if forcing is enabled, otherwise None.
     Policy:
-    - If SIGNALHUB_FORCE_LANGUAGE is set (e.g., 'en'), use it.
+    - If TRANSCRIPTAI_FORCE_LANGUAGE is set (e.g., 'en'), use it.
     - Else, when running in desktop mode, default to 'en' to improve
       reliability for short/clean English clips without network.
     """
-    env_lang = (os.getenv("SIGNALHUB_FORCE_LANGUAGE") or "").strip()
+    env_lang = (os.getenv("TRANSCRIPTAI_FORCE_LANGUAGE") or "").strip()
     if env_lang:
         return env_lang
-    if os.getenv("SIGNALHUB_MODE", "").lower() == "desktop":
+    if os.getenv("TRANSCRIPTAI_MODE", "").lower() == "desktop":
         return "en"
     return None
 
@@ -107,7 +119,7 @@ class WhisperProcessor:
         self._last_load_error: Optional[str] = None
         self._load_lock = threading.Lock()
         if not _transcription_enabled():
-            logger.warning("Transcription disabled via SIGNALHUB_ENABLE_TRANSCRIPTION=0")
+            logger.warning("Transcription disabled via TRANSCRIPTAI_ENABLE_TRANSCRIPTION=0")
         if not _WHISPER_AVAILABLE:
             logger.warning("Whisper/Torch not available. Transcription disabled.")
         
@@ -773,7 +785,60 @@ class WhisperProcessor:
         Returns:
             List of available model names
         """
-        return ["tiny", "base", "small", "medium", "large"]
+        if _WHISPER_AVAILABLE:
+            # Limit to core multilingual variants to align with MLX backend.
+            supported = ["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]
+            return [name for name in supported if name in getattr(whisper, "_MODELS", {})]
+        return ["tiny"]
+
+    def is_model_cached(self, model_name: str) -> bool:
+        """
+        Check whether a whisper checkpoint already exists in the local cache.
+        """
+        if not _WHISPER_AVAILABLE:
+            return False
+
+        models_map = getattr(whisper, "_MODELS", {})
+        url = models_map.get(model_name)
+        if not url:
+            return False
+        cache_path = _whisper_cache_root() / Path(url).name
+        return cache_path.exists()
+
+    def download_model(self, model_name: str) -> bool:
+        """
+        Download a whisper checkpoint into the cache without permanently loading it.
+        """
+        if not _WHISPER_AVAILABLE:
+            raise RuntimeError("Whisper/Torch not available")
+
+        models_map = getattr(whisper, "_MODELS", {})
+        if model_name not in models_map:
+            raise ValueError(f"Unsupported model name '{model_name}'")
+
+        cache_root = _whisper_cache_root()
+        cache_root.mkdir(parents=True, exist_ok=True)
+
+        # Trigger the download using whisper's internal helper to avoid holding the model in memory.
+        whisper._download(models_map[model_name], str(cache_root), in_memory=False)  # type: ignore[attr-defined]
+        return True
+
+    def reload_model(self, model_name: str) -> bool:
+        """
+        Reload the active whisper model, switching to a newly downloaded checkpoint.
+        """
+        if not _WHISPER_AVAILABLE:
+            raise RuntimeError("Whisper/Torch not available")
+
+        with self._load_lock:
+            try:
+                self.model_name = model_name
+                self.model = None
+                self._model_loaded = False
+                return self._load_model()
+            except Exception as exc:  # pragma: no cover - error path logged, re-raised
+                logger.error(f"Failed to switch Whisper model to {model_name}: {exc}")
+                raise
     
     @log_function_call
     def get_model_info(self) -> Dict[str, Any]:

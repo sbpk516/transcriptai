@@ -1,4 +1,4 @@
-// SignalHub Port Configuration
+// TranscriptAI Port Configuration
 // CHANGE ONLY THESE VALUES TO UPDATE ALL PORTS
 
 const config = {
@@ -13,5 +13,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // Export for browser
 if (typeof window !== 'undefined') {
-  window.SIGNALHUB_CONFIG = config;
+  window.TRANSCRIPTAI_CONFIG = config;
 }

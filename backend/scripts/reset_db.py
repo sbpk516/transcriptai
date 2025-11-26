@@ -1,5 +1,5 @@
 """
-Utility to drop and recreate all database tables for SignalHub.
+Utility to drop and recreate all database tables for TranscriptAI.
 
 Usage:
   python backend/scripts/reset_db.py

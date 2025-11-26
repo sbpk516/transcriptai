@@ -64,7 +64,7 @@ test('insertDictationText falls back to bridge', async () => {
   const { insertDictationText } = await loadHelper()
   const calls: any[] = []
   ;(globalThis as any).window = globalThis
-  ;(window as any).signalhubDictation = {
+  ;(window as any).transcriptaiDictation = {
     async typeText(payload: any) {
       calls.push(payload)
       return { ok: true }
@@ -80,7 +80,7 @@ test('insertDictationText falls back to bridge', async () => {
     assert.equal(calls[0].text, 'bridge test')
   })
 
-  delete (window as any).signalhubDictation
+  delete (window as any).transcriptaiDictation
   if (originalWindow === undefined) {
     delete (globalThis as any).window
   } else {

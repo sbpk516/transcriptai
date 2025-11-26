@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Quick Debug Script - SignalHub
+# Quick Debug Script - TranscriptAI
 # Comprehensive debugging for both frontend and backend
 
-echo "🔍 Quick Debug - SignalHub"
+echo "🔍 Quick Debug - TranscriptAI"
 echo "=========================="
 
 # Colors for output
@@ -28,11 +28,11 @@ print_status() {
 # Check 1: Directory
 echo "📁 Checking directory..."
 CURRENT_DIR=$(pwd)
-if [[ "$CURRENT_DIR" == *"/signalhub" ]]; then
+if [[ "$CURRENT_DIR" == *"/transcriptai" ]]; then
     print_status "OK" "Correct directory: $CURRENT_DIR"
 else
     print_status "ERROR" "Wrong directory: $CURRENT_DIR"
-    print_status "INFO" "Should be in: .../signalhub"
+    print_status "INFO" "Should be in: .../transcriptai"
     exit 1
 fi
 
@@ -128,7 +128,7 @@ fi
 # Check 5: Database
 echo "🗄️  Checking Database..."
 if command -v psql > /dev/null 2>&1; then
-    if psql -d signalhub -c "SELECT 1;" > /dev/null 2>&1; then
+    if psql -d transcriptai -c "SELECT 1;" > /dev/null 2>&1; then
         print_status "OK" "Database connection successful"
     else
         print_status "WARN" "Database connection failed"
@@ -139,10 +139,10 @@ fi
 
 # Check 6: Logs
 echo "📋 Checking Logs..."
-if [ -f "logs/signalhub.log" ]; then
+if [ -f "logs/transcriptai.log" ]; then
     print_status "OK" "Log file exists"
     echo "Last 5 log entries:"
-    tail -5 logs/signalhub.log
+    tail -5 logs/transcriptai.log
 else
     print_status "WARN" "Log file not found"
 fi

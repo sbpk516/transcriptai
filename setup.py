@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Setup script for SignalHub Phase 0.
+Setup script for TranscriptAI Phase 0.
 """
 import os
 import sys
@@ -59,7 +59,7 @@ def create_env_file():
         else:
             print("⚠️ env.example not found, creating basic .env file")
             with open(".env", "w") as f:
-                f.write("DATABASE_URL=postgresql://signalhub:signalhub123@localhost:5432/signalhub\n")
+                f.write("DATABASE_URL=postgresql://transcriptai:transcriptai123@localhost:5432/transcriptai\n")
                 f.write("DEBUG=True\n")
                 f.write("SECRET_KEY=your-secret-key-here-change-in-production\n")
             print("✅ Created basic .env file")
@@ -69,7 +69,7 @@ def create_env_file():
 
 def main():
     """Main setup function."""
-    print("🚀 SignalHub Phase 0 Setup")
+    print("🚀 TranscriptAI Phase 0 Setup")
     print("=" * 50)
     
     # Check Python version
@@ -90,9 +90,9 @@ def main():
     print("\n🎉 Setup completed successfully!")
     print("\n📋 Next steps:")
     print("1. Set up PostgreSQL database:")
-    print("   - Create database: createdb signalhub")
-    print("   - Create user: createuser signalhub")
-    print("   - Set password for signalhub user")
+    print("   - Create database: createdb transcriptai")
+    print("   - Create user: createuser transcriptai")
+    print("   - Set password for transcriptai user")
     print("2. Update .env file with your database credentials")
     print("3. Run the application: python -m uvicorn backend.app.main:app --reload")
     print("4. Test the API: curl http://localhost:8001/health")

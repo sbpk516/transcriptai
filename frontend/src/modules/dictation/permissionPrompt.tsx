@@ -30,8 +30,8 @@ export const DictationPermissionPrompt: React.FC<DictationPermissionPromptProps>
       </p>
       {(needsAccessibility || needsMic) && (
         <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-gray-700">
-          {needsAccessibility && <li>Enable accessibility control for SignalHub in system settings.</li>}
-          {needsMic && <li>Allow SignalHub to use the microphone.</li>}
+          {needsAccessibility && <li>Enable accessibility control for TranscriptAI in system settings.</li>}
+          {needsMic && <li>Allow TranscriptAI to use the microphone.</li>}
         </ul>
       )}
       <div className="mt-5 flex flex-col gap-2 sm:flex-row">

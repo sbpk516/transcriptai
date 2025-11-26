@@ -51,19 +51,19 @@ FIRST_FAILURE_PHASE=""
 # Pre-flight checks
 echo -e "${YELLOW}Pre-flight Checks:${NC}"
 
-# Check if SignalHub is running
-if pgrep -f "SignalHub" > /dev/null 2>&1; then
-  echo -e "${GREEN}✓${NC} SignalHub app is running"
+# Check if TranscriptAI is running
+if pgrep -f "TranscriptAI" > /dev/null 2>&1; then
+  echo -e "${GREEN}✓${NC} TranscriptAI app is running"
 else
-  echo -e "${RED}✗${NC} SignalHub app is NOT running"
-  echo -e "${YELLOW}→${NC} Please start the SignalHub desktop app first"
+  echo -e "${RED}✗${NC} TranscriptAI app is NOT running"
+  echo -e "${YELLOW}→${NC} Please start the TranscriptAI desktop app first"
   echo ""
   echo "Aborting test run..."
   exit 1
 fi
 
 # Check if dictation is enabled
-SETTINGS_FILE="$HOME/Library/Application Support/signalhub/dictation-settings.json"
+SETTINGS_FILE="$HOME/Library/Application Support/transcriptai/dictation-settings.json"
 if [ -f "$SETTINGS_FILE" ]; then
   if grep -q '"enabled": *true' "$SETTINGS_FILE"; then
     echo -e "${GREEN}✓${NC} Dictation is enabled"
@@ -89,9 +89,9 @@ echo ""
 
 # Instructions
 echo -e "${BLUE}${BOLD}Test Instructions:${NC}"
-echo "1. Keep the SignalHub app running in the background"
+echo "1. Keep the TranscriptAI app running in the background"
 echo "2. Some tests require manual interaction (pressing keys, speaking)"
-echo "3. Open browser DevTools in SignalHub for Phases 4-7 (Cmd+Option+I)"
+echo "3. Open browser DevTools in TranscriptAI for Phases 4-7 (Cmd+Option+I)"
 echo "4. Have a text editor open (TextEdit, Notes) for Phase 7"
 echo ""
 echo -e "${YELLOW}Press ENTER when ready to begin testing...${NC}"
@@ -170,7 +170,7 @@ else
     echo -e "  ${BLUE}node $SCRIPT_DIR/$FIRST_FAILURE${NC}"
     echo ""
     echo "  Check logs:"
-    echo -e "  ${BLUE}tail -f ~/Library/Application\\ Support/signalhub/logs/desktop.log${NC}"
+    echo -e "  ${BLUE}tail -f ~/Library/Application\\ Support/transcriptai/logs/desktop.log${NC}"
   fi
   
   exit 1

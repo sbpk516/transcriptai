@@ -2,7 +2,7 @@
 
 # Automatic log analyzer for dictation timeout issues
 
-LOG_FILE="$HOME/Library/Application Support/SignalHub/logs/desktop.log"
+LOG_FILE="$HOME/Library/Application Support/TranscriptAI/logs/desktop.log"
 
 echo "════════════════════════════════════════════════════════════"
 echo " DICTATION LOG ANALYZER"
@@ -18,7 +18,7 @@ if [ ! -f "$LOG_FILE" ]; then
   echo "  3. The log directory wasn't created"
   echo ""
   echo "Please launch the app first:"
-  echo "  open /Users/bsachi867/Documents/ai_ground/signalhub/desktop/dist/mac-arm64/SignalHub.app"
+  echo "  open /Users/bsachi867/Documents/ai_ground/transcriptai/desktop/dist/mac-arm64/TranscriptAI.app"
   echo ""
   exit 1
 fi

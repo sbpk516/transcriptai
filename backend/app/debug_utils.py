@@ -1,5 +1,5 @@
 """
-Debugging utilities for SignalHub development.
+Debugging utilities for TranscriptAI development.
 Provides tools for easy debugging and troubleshooting.
 """
 import os
@@ -16,19 +16,19 @@ class DebugHelper:
     
     def __init__(self, debug_dir: str = "debug_logs"):
         # Resolve a writable debug directory
-        data_dir = os.getenv("SIGNALHUB_DATA_DIR")
+        data_dir = os.getenv("TRANSCRIPTAI_DATA_DIR")
         if data_dir:
             base = Path(data_dir) / "logs"
         else:
             # Fallback to user home if CWD is read-only (e.g., packaged app bundle)
-            base = Path.home() / "Library" / "Application Support" / "SignalHub" / "logs" if sys.platform == "darwin" else Path.cwd() / "logs"
+            base = Path.home() / "Library" / "Application Support" / "TranscriptAI" / "logs" if sys.platform == "darwin" else Path.cwd() / "logs"
         self.debug_dir = base
         try:
             self.debug_dir.mkdir(parents=True, exist_ok=True)
         except Exception:
             # Last resort: temp directory
             import tempfile
-            self.debug_dir = Path(tempfile.gettempdir()) / "signalhub_logs"
+            self.debug_dir = Path(tempfile.gettempdir()) / "transcriptai_logs"
             self.debug_dir.mkdir(parents=True, exist_ok=True)
     
     def log_debug_info(self, operation: str, data: Dict[str, Any], filename: Optional[str] = None):
@@ -264,5 +264,5 @@ def check_system_requirements() -> Dict[str, Any]:
     
     return requirements
 
-# Global debug helper instance (uses SIGNALHUB_DATA_DIR when present)
+# Global debug helper instance (uses TRANSCRIPTAI_DATA_DIR when present)
 debug_helper = DebugHelper()

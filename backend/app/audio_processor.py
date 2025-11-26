@@ -1,5 +1,5 @@
 """
-Audio processing module for SignalHub Phase 1.2.
+Audio processing module for TranscriptAI Phase 1.2.
 Provides comprehensive audio analysis and processing using FFmpeg.
 """
 import os
@@ -15,7 +15,7 @@ from .debug_utils import debug_helper
 from .logging_config import log_function_call, PerformanceMonitor
 
 # Configure logger for this module
-logger = logging.getLogger('signalhub.audio_processor')
+logger = logging.getLogger('transcriptai.audio_processor')
 
 class AudioProcessor:
     """

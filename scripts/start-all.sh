@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# SignalHub - Complete Startup Script
+# TranscriptAI - Complete Startup Script
 # This script clears ports, starts backend, and starts frontend in one command
-# Author: SignalHub Team
+# Author: TranscriptAI Team
 # Version: 1.0
 
 set -euo pipefail
@@ -92,16 +92,16 @@ start_backend() {
     # Start backend in background
     cd backend
     source ../venv/bin/activate
-    SIGNALHUB_ENABLE_TRANSCRIPTION=1 \
-    SIGNALHUB_LIVE_TRANSCRIPTION=1 \
-    SIGNALHUB_LIVE_MIC=1 \
-    SIGNALHUB_LIVE_BATCH_ONLY=1 \
+    TRANSCRIPTAI_ENABLE_TRANSCRIPTION=1 \
+    TRANSCRIPTAI_LIVE_TRANSCRIPTION=1 \
+    TRANSCRIPTAI_LIVE_MIC=1 \
+    TRANSCRIPTAI_LIVE_BATCH_ONLY=1 \
     python start.py &
     local backend_pid=$!
     cd ..
     
     # Store PID for cleanup
-    echo $backend_pid > /tmp/signalhub_backend.pid
+    echo $backend_pid > /tmp/transcriptai_backend.pid
     
     # Wait for backend to be ready
     if wait_for_service "http://127.0.0.1:8001/health" "Backend" $HEALTH_CHECK_TIMEOUT $HEALTH_CHECK_RETRIES; then
@@ -133,7 +133,7 @@ start_frontend() {
     cd ..
     
     # Store PID for cleanup
-    echo $frontend_pid > /tmp/signalhub_frontend.pid
+    echo $frontend_pid > /tmp/transcriptai_frontend.pid
     
     # Wait for frontend to be ready
     if wait_for_service "http://localhost:3000" "Frontend" $HEALTH_CHECK_TIMEOUT $HEALTH_CHECK_RETRIES; then
@@ -151,17 +151,17 @@ cleanup() {
     log "Cleaning up processes..."
     
     # Kill backend if PID file exists
-    if [ -f /tmp/signalhub_backend.pid ]; then
-        local backend_pid=$(cat /tmp/signalhub_backend.pid)
+    if [ -f /tmp/transcriptai_backend.pid ]; then
+        local backend_pid=$(cat /tmp/transcriptai_backend.pid)
         kill $backend_pid 2>/dev/null || true
-        rm -f /tmp/signalhub_backend.pid
+        rm -f /tmp/transcriptai_backend.pid
     fi
     
     # Kill frontend if PID file exists
-    if [ -f /tmp/signalhub_frontend.pid ]; then
-        local frontend_pid=$(cat /tmp/signalhub_frontend.pid)
+    if [ -f /tmp/transcriptai_frontend.pid ]; then
+        local frontend_pid=$(cat /tmp/transcriptai_frontend.pid)
         kill $frontend_pid 2>/dev/null || true
-        rm -f /tmp/signalhub_frontend.pid
+        rm -f /tmp/transcriptai_frontend.pid
     fi
     
     # Kill any remaining processes
@@ -176,7 +176,7 @@ trap cleanup EXIT INT TERM
 # Main execution
 main() {
     echo -e "${PURPLE}========================================${NC}"
-    echo -e "${PURPLE}    SignalHub Complete Startup Script   ${NC}"
+    echo -e "${PURPLE}    TranscriptAI Complete Startup Script   ${NC}"
     echo -e "${PURPLE}========================================${NC}"
     echo
     
@@ -213,7 +213,7 @@ main() {
     # Phase 4: Final status
     log "Phase 4: Final status check..."
     echo
-    success "🎉 SignalHub is now running!"
+    success "🎉 TranscriptAI is now running!"
     echo
     info "📊 Backend:  http://127.0.0.1:8001"
     info "📊 Frontend: http://localhost:3000"
@@ -231,16 +231,16 @@ main() {
         sleep 1
         
         # Check if processes are still running
-        if [ -f /tmp/signalhub_backend.pid ]; then
-            local backend_pid=$(cat /tmp/signalhub_backend.pid)
+        if [ -f /tmp/transcriptai_backend.pid ]; then
+            local backend_pid=$(cat /tmp/transcriptai_backend.pid)
             if ! kill -0 $backend_pid 2>/dev/null; then
                 error "Backend process died unexpectedly"
                 break
             fi
         fi
         
-        if [ -f /tmp/signalhub_frontend.pid ]; then
-            local frontend_pid=$(cat /tmp/signalhub_frontend.pid)
+        if [ -f /tmp/transcriptai_frontend.pid ]; then
+            local frontend_pid=$(cat /tmp/transcriptai_frontend.pid)
             if ! kill -0 $frontend_pid 2>/dev/null; then
                 error "Frontend process died unexpectedly"
                 break
@@ -251,7 +251,7 @@ main() {
 
 # Check if we're in the right directory
 if [ ! -f "config.js" ]; then
-    error "config.js not found. Please run this script from the SignalHub root directory."
+    error "config.js not found. Please run this script from the TranscriptAI root directory."
     exit 1
 fi
 

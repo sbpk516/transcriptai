@@ -1,5 +1,5 @@
 """
-MLX-based Whisper integration for SignalHub on Apple Silicon.
+MLX-based Whisper integration for TranscriptAI on Apple Silicon.
 Provides optimized speech-to-text using mlx-whisper framework.
 """
 import base64
@@ -21,7 +21,7 @@ from .audio_processor import audio_processor
 from .logging_config import log_function_call, PerformanceMonitor
 
 # Configure logger for this module
-logger = logging.getLogger('signalhub.whisper_processor_mlx')
+logger = logging.getLogger('transcriptai.whisper_processor_mlx')
 
 mlx_whisper = None
 _MLX_AVAILABLE = False
@@ -35,20 +35,35 @@ def _ensure_mlx_import(reason: str) -> bool:
 
     try:
         mlx_whisper = importlib.import_module("mlx_whisper")
-        _MLX_AVAILABLE = True
-        return True
-    except ImportError as initial_error:
+        # Verify the import actually works by checking for a key attribute
+        # This catches AttributeError issues like mlx.core.array not existing
+        if hasattr(mlx_whisper, 'transcribe'):
+            _MLX_AVAILABLE = True
+            return True
+        else:
+            raise AttributeError("mlx_whisper module missing required 'transcribe' function")
+    except (ImportError, AttributeError, ModuleNotFoundError) as initial_error:
+        # Try activating MLX site packages and retry
         if activate_mlx_site_packages(reason=reason, log=logger):
             try:
                 mlx_whisper = importlib.import_module("mlx_whisper")
-                _MLX_AVAILABLE = True
-                return True
-            except ImportError as retry_error:
+                if hasattr(mlx_whisper, 'transcribe'):
+                    _MLX_AVAILABLE = True
+                    return True
+                else:
+                    raise AttributeError("mlx_whisper module missing required 'transcribe' function")
+            except (ImportError, AttributeError, ModuleNotFoundError) as retry_error:
                 logger.debug("MLX import failed after activation: %s", retry_error)
         else:
             logger.debug("MLX site-packages activation failed for reason=%s", reason)
 
-        logger.debug("MLX import failed: %s", initial_error)
+        logger.debug("MLX import failed: %s (type: %s)", initial_error, type(initial_error).__name__)
+        mlx_whisper = None
+        _MLX_AVAILABLE = False
+        return False
+    except Exception as unexpected_error:
+        # Catch any other unexpected errors during import
+        logger.warning("Unexpected error during MLX import: %s (type: %s)", unexpected_error, type(unexpected_error).__name__)
         mlx_whisper = None
         _MLX_AVAILABLE = False
         return False
@@ -59,14 +74,14 @@ def is_mlx_available() -> bool:
     return _ensure_mlx_import("availability_probe")
 
 def _transcription_enabled() -> bool:
-    return os.getenv("SIGNALHUB_ENABLE_TRANSCRIPTION", "0") == "1"
+    return os.getenv("TRANSCRIPTAI_ENABLE_TRANSCRIPTION", "0") == "1"
 
 def _forced_language() -> Optional[str]:
     """Determine if we should force a language."""
-    env_lang = (os.getenv("SIGNALHUB_FORCE_LANGUAGE") or "").strip()
+    env_lang = (os.getenv("TRANSCRIPTAI_FORCE_LANGUAGE") or "").strip()
     if env_lang:
         return env_lang
-    if os.getenv("SIGNALHUB_MODE", "").lower() == "desktop":
+    if os.getenv("TRANSCRIPTAI_MODE", "").lower() == "desktop":
         return "en"
     return None
 
@@ -107,7 +122,7 @@ class WhisperProcessorMLX:
             raise RuntimeError("MLX runtime unavailable")
         
         if not _transcription_enabled():
-            logger.warning("Transcription disabled via SIGNALHUB_ENABLE_TRANSCRIPTION=0")
+            logger.warning("Transcription disabled via TRANSCRIPTAI_ENABLE_TRANSCRIPTION=0")
         if not _MLX_AVAILABLE:
             logger.warning("MLX/mlx-whisper not available. Transcription disabled.")
         
@@ -638,4 +653,86 @@ class WhisperProcessorMLX:
             "platform": "Apple Silicon",
             "unified_memory": True,
         }
+
+    def is_model_cached(self, model_name: str) -> bool:
+        """
+        Check if a model is already cached locally.
+        
+        Args:
+            model_name: Name of the model (tiny, base, etc.)
+            
+        Returns:
+            True if cached, False otherwise
+        """
+        try:
+            from huggingface_hub import try_to_load_from_cache
+            repo_id = f"mlx-community/whisper-{model_name}"
+            # Check for a key file like 'config.json'
+            filepath = try_to_load_from_cache(repo_id=repo_id, filename="config.json")
+            return filepath is not None and os.path.exists(filepath)
+        except Exception as e:
+            logger.warning(f"Failed to check cache for {model_name}: {e}")
+            return False
+
+    def download_model(self, model_name: str) -> bool:
+        """
+        Explicitly download a model to the cache.
+        
+        Args:
+            model_name: Name of the model to download
+            
+        Returns:
+            True if successful
+        """
+        try:
+            logger.info(f"Starting explicit download for {model_name}")
+            if not _ensure_mlx_import("download_model"):
+                 raise RuntimeError("MLX not available")
+                 
+            # Trigger download by loading it (mlx_whisper handles the download)
+            # We don't set self.model yet, just ensure it's in cache
+            repo_id = f"mlx-community/whisper-{model_name}"
+            
+            # Use snapshot_download from huggingface_hub directly if possible for better control
+            # But mlx_whisper.load_model is the standard way.
+            # Since mlx_whisper.load_model returns weights, we can just call it and discard result.
+            # However, to avoid loading into RAM, let's use huggingface_hub directly.
+            from huggingface_hub import snapshot_download
+            snapshot_download(repo_id=repo_id)
+            
+            logger.info(f"Download complete for {model_name}")
+            return True
+        except Exception as e:
+            logger.error(f"Download failed for {model_name}: {e}")
+            return False
+
+    def reload_model(self, model_name: str) -> bool:
+        """
+        Switch the active model.
+        
+        Args:
+            model_name: Name of the new model to load
+            
+        Returns:
+            True if successful
+        """
+        logger.info(f"Switching model from {self.model_name} to {model_name}")
+        
+        # Acquire lock to prevent transcription during switch
+        with self._load_lock:
+            try:
+                self.model_name = model_name
+                self._model_loaded = False
+                self.model = None
+                
+                # Load the new model
+                success = self._load_model()
+                if success:
+                    logger.info(f"Successfully switched to {model_name}")
+                else:
+                    logger.error(f"Failed to switch to {model_name}")
+                return success
+            except Exception as e:
+                logger.error(f"Error switching model: {e}")
+                return False
 

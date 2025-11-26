@@ -13,7 +13,7 @@ const { TestFramework, TestUtils } = require('./test-framework');
 const framework = new TestFramework('PHASE 4: Frontend Recording');
 
 // Paths
-const LOG_PATH = path.join(os.homedir(), 'Library/Application Support/signalhub/logs/desktop.log');
+const LOG_PATH = path.join(os.homedir(), 'Library/Application Support/transcriptai/logs/desktop.log');
 
 /**
  * Test 4.1: Lifecycle event subscription
@@ -21,7 +21,7 @@ const LOG_PATH = path.join(os.homedir(), 'Library/Application Support/signalhub/
  */
 framework.test('Lifecycle event subscription', async () => {
   console.log('\n  📋 NOTE: This phase requires checking browser DevTools console');
-  console.log('  Open DevTools in the SignalHub app window (Cmd+Option+I)');
+  console.log('  Open DevTools in the TranscriptAI app window (Cmd+Option+I)');
   console.log('  Filter console by "DictationController" or "renderer received"');
   console.log('\n  📋 ACTION REQUIRED: Hold CMD+Option keys for 2 seconds then release...');
   
@@ -116,7 +116,7 @@ framework.test('Recorder stop on press-end', async () => {
 // Run tests
 (async () => {
   console.log('\n⚠️  IMPORTANT: Phase 4 tests require browser DevTools inspection');
-  console.log('Open SignalHub app → Right-click → Inspect Element → Console tab\n');
+  console.log('Open TranscriptAI app → Right-click → Inspect Element → Console tab\n');
   
   const results = await framework.run();
   const success = framework.printSummary();

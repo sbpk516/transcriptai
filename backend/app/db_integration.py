@@ -1,5 +1,5 @@
 """
-Database integration module for SignalHub Phase 1.2.3.
+Database integration module for TranscriptAI Phase 1.2.3.
 Provides comprehensive database operations for storing transcription results and updating call statuses.
 """
 import os
@@ -18,11 +18,11 @@ from .database import get_db
 from .models import Call, Transcript, Analysis
 
 # Configure logger for this module
-logger = logging.getLogger('signalhub.db_integration')
+logger = logging.getLogger('transcriptai.db_integration')
 
 class DatabaseIntegration:
     """
-    Handles database operations for SignalHub.
+    Handles database operations for TranscriptAI.
     Provides comprehensive database integration for calls, transcripts, and analyses.
     """
     
@@ -167,10 +167,32 @@ class DatabaseIntegration:
                         "store_timestamp": datetime.now().isoformat()
                     }
                 
+                # Extract text from transcription_data
+                # Handle different possible structures
+                text = transcription_data.get("text", "")
+                if not text and "transcription_text" in transcription_data:
+                    text = transcription_data.get("transcription_text", "")
+                if not text and "transcript" in transcription_data:
+                    # If transcript is a dict, extract text from it
+                    transcript_obj = transcription_data.get("transcript", {})
+                    if isinstance(transcript_obj, dict):
+                        text = transcript_obj.get("text", "")
+                    elif isinstance(transcript_obj, str):
+                        text = transcript_obj
+                
+                # Log what we're storing
+                logger.info(f"Storing transcript text length: {len(text)} characters")
+                if len(text) > 0:
+                    logger.info(f"First 100 chars: {text[:100]}")
+                else:
+                    logger.warning(f"WARNING: Empty transcript text for call_id {call_id}")
+                    logger.warning(f"Transcription data structure: {list(transcription_data.keys())}")
+                    logger.warning(f"Full transcription_data: {transcription_data}")
+                
                 # Create transcript record (using available fields)
                 transcript_record = Transcript(
                     call_id=call_id,
-                    text=transcription_data.get("text", ""),
+                    text=text or "",  # Ensure not None
                     language=transcription_data.get("language", "en"),
                     confidence=int(transcription_data.get("confidence_score", 0.0) * 100)  # Convert to 0-100 scale
                 )

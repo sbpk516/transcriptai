@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# SignalHub Port Cleanup Script
-# This script clears all ports and processes related to SignalHub frontend and backend
+# TranscriptAI Port Cleanup Script
+# This script clears all ports and processes related to TranscriptAI frontend and backend
 
 set -euo pipefail
 
@@ -28,7 +28,7 @@ warning() {
     echo -e "${YELLOW}[WARNING]${NC} $*"
 }
 
-log "Starting SignalHub port cleanup..."
+log "Starting TranscriptAI port cleanup..."
 
 # Function to kill processes by pattern
 kill_processes() {
@@ -108,7 +108,7 @@ main() {
     
     log "Phase 2: Clearing specific ports..."
     
-    # Clear common SignalHub ports (respect VPN usage on 8000 — do NOT clear 8000)
+    # Clear common TranscriptAI ports (respect VPN usage on 8000 — do NOT clear 8000)
     kill_port_processes "8010" "legacy backend port"
     kill_port_processes "8001" "backend port"
     kill_port_processes "8002" "secondary backend port"
@@ -127,7 +127,7 @@ main() {
     remaining=$(check_remaining_processes)
     
     if [ "$remaining" -eq 0 ]; then
-        success "All SignalHub processes cleared successfully!"
+        success "All TranscriptAI processes cleared successfully!"
     else
         warning "$remaining processes still running:"
         ps aux | grep -E "(uvicorn|npm.*dev|vite.*port|node.*dev|python.*app.main)" | grep -v grep || true

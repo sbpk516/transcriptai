@@ -3,7 +3,7 @@ const https = require('node:https')
 const { URL } = require('node:url')
 const semver = require('semver')
 
-const MANIFEST_URL = 'https://github.com/sbpk516/signalhub/releases/latest/download/latest.json'
+const MANIFEST_URL = 'https://github.com/sbpk516/transcriptai/releases/latest/download/latest.json'
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000 // 4 hours
 const MAX_REDIRECTS = 5
 const REQUEST_TIMEOUT_MS = 15000

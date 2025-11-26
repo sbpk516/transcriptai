@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 # Get the appropriate Whisper processor (PyTorch or MLX)
 whisper_processor = get_global_whisper_processor()
-logger = logging.getLogger("signalhub.dictation")
+logger = logging.getLogger("transcriptai.dictation")
 
 router = APIRouter(prefix="/dictation", tags=["dictation"])
 

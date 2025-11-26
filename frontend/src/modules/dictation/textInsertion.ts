@@ -116,7 +116,7 @@ export async function insertDictationText(
   }
 
   if (allowBridge) {
-    const bridge = (window as unknown as { signalhubDictation?: any })?.signalhubDictation
+    const bridge = (window as unknown as { transcriptaiDictation?: any })?.transcriptaiDictation
     if (bridge && typeof bridge.typeText === 'function') {
       try {
         const result = await bridge.typeText({ text })

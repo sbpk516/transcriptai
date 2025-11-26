@@ -3,7 +3,7 @@
  */
 export const transcriptionShortClipRequestSchema = {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://signalhub.local/schemas/transcription-short-clip-request.schema.json",
+  "$id": "https://transcriptai.local/schemas/transcription-short-clip-request.schema.json",
   "title": "TranscriptionShortClipRequest",
   "type": "object",
   "additionalProperties": false,
