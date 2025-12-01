@@ -7,6 +7,10 @@ export * from './constants';
 // Export utility types
 export * from './utils';
 
+// Navigation tabs
+export * from './navigation';
+export * from './updates';
+
 // Re-export commonly used types for convenience
 export type {
   ApiResponse,

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { Button } from '../../components/Shared'
 
 interface ModelInfo {
     name: string
@@ -89,77 +90,75 @@ export const ModelSettings: React.FC = () => {
 
     const renderStatus = (model: ModelInfo) => {
         if (model.status === 'downloading') {
-            return <div className="text-sm text-blue-600">Downloading...</div>
+            return <div className="text-sm text-white/70">Downloading…</div>
         }
         if (model.status === 'error') {
-            return <div className="text-sm text-red-500">{model.message || 'Download failed'}</div>
+            return <div className="text-sm text-rose-300">{model.message || 'Download failed'}</div>
         }
         if (model.status === 'downloaded') {
-            return <div className="text-sm text-gray-500">Downloaded{model.version ? ` (${model.version})` : ''}</div>
+            return <div className="text-sm text-white/50">Downloaded{model.version ? ` (${model.version})` : ''}</div>
         }
         if (model.status === 'needs_update') {
-            return <div className="text-sm text-amber-600">Update available</div>
+            return <div className="text-sm text-amber-200">Update available</div>
         }
         return null
     }
 
     return (
-        <div className="p-4 space-y-4">
-            <h2 className="text-xl font-bold">Speech Recognition Models</h2>
-            {error && <div className="text-red-500">{error}</div>}
+        <div className="space-y-5 text-white">
+            <h2 className="gradient-heading text-2xl font-semibold">Speech recognition models</h2>
+            {error && <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-rose-100">{error}</div>}
 
-            <div className="grid gap-4">
+            <div className="space-y-4">
                 {models.map(model => (
-                    <div key={model.name} className="flex items-center justify-between p-4 border rounded bg-white shadow-sm">
+                    <div
+                        key={model.name}
+                        className="glass-surface flex flex-col gap-4 rounded-2xl border border-white/10 px-4 py-4 shadow-glow md:flex-row md:items-center md:justify-between"
+                    >
                         <div>
-                            <div className="font-medium text-lg capitalize">{model.name}</div>
-                            <div className="text-sm text-gray-500">
+                            <div className="text-lg font-semibold capitalize text-white">{model.name}</div>
+                            <div className="text-sm text-white/60">
                                 Size: ~{model.size_mb} MB
-                                {model.is_active && <span className="ml-2 text-green-600 font-bold">(Active)</span>}
+                                {model.is_active && (
+                                    <span className="ml-2 rounded-full border border-emerald-300/40 bg-emerald-400/10 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-emerald-200">
+                                        Active
+                                    </span>
+                                )}
                             </div>
                             {renderStatus(model)}
                         </div>
 
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                             {model.status === 'downloading' ? (
-                                <button
-                                    disabled
-                                    className="px-4 py-2 bg-blue-100 text-blue-800 rounded opacity-70 cursor-not-allowed"
-                                >
-                                    Downloading...
-                                </button>
+                                <span className="rounded-2xl border border-white/20 bg-white/10 px-4 py-2 text-sm uppercase tracking-wide text-white/70">
+                                    Downloading…
+                                </span>
                             ) : !model.is_downloaded || model.status === 'needs_update' || model.status === 'error' ? (
-                                <button
+                                <Button
+                                    variant="primary"
+                                    size="sm"
                                     onClick={() => handleDownload(model.name)}
                                     disabled={model.is_active && !(model.status === 'error' || model.status === 'needs_update')}
-                                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
                                 >
                                     Download
-                                </button>
+                                </Button>
                             ) : model.is_active ? (
-                                <button
-                                    disabled
-                                    className="px-4 py-2 rounded bg-green-100 text-green-800 cursor-default"
-                                >
+                                <span className="rounded-2xl border border-emerald-300/40 bg-emerald-400/15 px-4 py-2 text-sm font-semibold uppercase tracking-wide text-emerald-100">
                                     Selected
-                                </button>
+                                </span>
                             ) : (
-                                <button
-                                    onClick={() => handleSelect(model.name)}
-                                    disabled={loading}
-                                    className="px-4 py-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-800"
-                                >
+                                <Button variant="secondary" size="sm" onClick={() => handleSelect(model.name)} disabled={loading}>
                                     Select
-                                </button>
+                                </Button>
                             )}
                         </div>
                     </div>
                 ))}
             </div>
 
-            <div className="text-sm text-gray-500 mt-4">
-                Note: Larger models are more accurate but slower. 'Tiny' is recommended for speed.
-            </div>
+            <p className="text-sm text-white/60">
+                Note: larger models are more accurate but slower. <strong>Tiny</strong> is recommended for speed.
+            </p>
         </div>
     )
 }

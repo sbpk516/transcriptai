@@ -1,5 +1,3 @@
-export { default as Dashboard } from './Dashboard'
 export { default as Capture } from './Upload'
 export { default as Transcripts } from './Results'
-export { default as Analytics } from './Analytics'
 export { default as Settings } from './Settings'

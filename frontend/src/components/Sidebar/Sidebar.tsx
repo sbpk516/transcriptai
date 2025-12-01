@@ -1,105 +1,94 @@
 import React from 'react'
+import { motion } from 'framer-motion'
+import type { AppTab } from '../../types'
 
 interface SidebarProps {
   isOpen: boolean
   onToggle: () => void
-  activePage: 'dashboard' | 'capture' | 'transcripts' | 'analytics' | 'settings'
-  onPageChange: (page: 'dashboard' | 'capture' | 'transcripts' | 'analytics' | 'settings') => void
+  activePage: AppTab
+  onPageChange: (page: AppTab) => void
 }
 
+const menuItems: Array<{
+  id: AppTab
+  label: string
+  icon: string
+  description: string
+  accent: string
+}> = [
+  { id: 'capture', label: 'Capture', icon: '🎙️', description: 'Record or upload audio', accent: 'from-cyan-400 to-blue-500' },
+  { id: 'transcripts', label: 'Transcripts', icon: '📄', description: 'History of transcripts', accent: 'from-purple-400 to-pink-500' },
+  { id: 'settings', label: 'Settings', icon: '⚙️', description: 'Choose models', accent: 'from-blue-400 to-slate-400' },
+]
+
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle, activePage, onPageChange }) => {
-  const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: '📊', description: 'Overview and analytics' },
-    { id: 'capture', label: 'Capture', icon: '🎙️', description: 'Record or upload audio' },
-    { id: 'transcripts', label: 'Transcripts', icon: '📄', description: 'Review completed transcriptions' },
-    { id: 'analytics', label: 'Analytics', icon: '📈', description: 'Advanced insights' },
-    { id: 'settings', label: 'Settings', icon: '⚙️', description: 'Configuration' },
-    { id: 'help', label: 'Help', icon: '❓', description: 'Documentation & support' }
-  ]
-
-  const handleItemClick = (itemId: string) => {
-    if (['dashboard', 'capture', 'transcripts', 'analytics', 'settings'].includes(itemId)) {
-      onPageChange(itemId as any)
-    }
-  }
-
   return (
     <>
-      {/* Mobile overlay */}
       {isOpen && (
-        <div 
-          className="fixed inset-0 z-40 lg:hidden bg-gray-600 bg-opacity-75"
+        <div
+          className="fixed inset-0 z-40 bg-slate-900/70 backdrop-blur-sm lg:hidden"
           onClick={onToggle}
         />
       )}
-      
-      {/* Sidebar */}
-      <div className={`
-        fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0
-        ${isOpen ? 'translate-x-0' : '-translate-x-full'}
-      `}>
-        <div className="flex flex-col h-full">
-          {/* Header */}
-          <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200">
-            <span className="sr-only">TranscriptAI navigation</span>
-            <button
-              onClick={onToggle}
-              className="lg:hidden p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100"
-            >
-              <span className="sr-only">Close sidebar</span>
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 w-72 transform p-4 transition-transform duration-300 lg:static lg:w-72 lg:translate-x-0 ${
+          isOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <div className="glass-surface flex h-full flex-col rounded-3xl border border-white/10 p-4 shadow-glow">
+          <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs uppercase tracking-[0.3em] text-white/70">
+            <span>Workflow</span>
+            <button onClick={onToggle} className="lg:hidden">
+              <span className="sr-only">Close navigation</span>
+              <svg className="h-5 w-5 text-white/60" viewBox="0 0 24 24" fill="none">
+                <path stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" d="M6 6l12 12M18 6L6 18" />
               </svg>
             </button>
           </div>
-          
-          {/* Navigation */}
-          <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
-            {menuItems.map((item) => {
-              const isActive = activePage === (item.id as any)
-              const isClickable = ['dashboard', 'capture', 'transcripts', 'analytics', 'settings'].includes(item.id)
-              
+          <nav className="mt-6 flex-1 space-y-3 overflow-y-auto pr-1">
+            {menuItems.map((item, index) => {
+              const isActive = activePage === item.id
               return (
-                <div
+                <motion.button
                   key={item.id}
-                  className={`
-                    group flex items-center px-3 py-3 text-sm font-medium rounded-lg cursor-pointer transition-all duration-200
-                    ${isActive 
-                      ? 'bg-blue-100 text-blue-900 border-r-2 border-blue-500' 
-                      : isClickable
-                        ? 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
-                        : 'text-gray-400 cursor-not-allowed'
-                    }
-                  `}
-                  onClick={() => isClickable && handleItemClick(item.id)}
+                  onClick={() => onPageChange(item.id)}
+                  initial={{ opacity: 0, x: -12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                  whileHover={{ scale: 1.01 }}
+                  className={`w-full rounded-2xl border border-white/10 px-4 py-4 text-left text-sm transition-all duration-200 ${
+                    isActive
+                      ? `bg-white/10 text-white shadow-glow hover:translate-y-[-2px]`
+                      : 'bg-white/5 text-white/70 hover:bg-white/10'
+                  }`}
                 >
-                  <span className="text-xl mr-3">{item.icon}</span>
-                  <div className="flex-1">
-                    <div className="font-medium">{item.label}</div>
-                    <div className={`text-xs ${isActive ? 'text-blue-700' : 'text-gray-500'}`}>
-                      {item.description}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xl">{item.icon}</span>
+                      <div>
+                        <p className="text-base font-semibold text-white">{item.label}</p>
+                        <p className="text-xs text-white/60">{item.description}</p>
+                      </div>
                     </div>
+                    <span
+                      className={`rounded-full bg-gradient-to-r ${item.accent} px-3 py-1 text-xs font-medium text-slate-900`}
+                    >
+                      {isActive ? 'Active' : 'Go'}
+                    </span>
                   </div>
-                  {isActive && (
-                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                  )}
-                </div>
+                </motion.button>
               )
             })}
           </nav>
-          
-          {/* Footer */}
-          <div className="p-4 border-t border-gray-200">
-            <div className="text-xs text-gray-500 text-center">
-              <div className="mb-2">TranscriptAI v1.0</div>
-              <div className="flex items-center justify-center space-x-2">
-                <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                <span>System Online</span>
-              </div>
+          <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-center text-xs text-white/70">
+            <p className="text-sm font-semibold text-white">TranscriptAI · vNext</p>
+            <div className="mt-3 flex items-center justify-center gap-2 text-emerald-300">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400 shadow-glow" />
+              Stable connection
             </div>
           </div>
         </div>
-      </div>
+      </aside>
     </>
   )
 }

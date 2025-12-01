@@ -1,30 +1,27 @@
-import React, { useState, useCallback, useEffect } from 'react'
+import React, { useState, useCallback, useEffect, useMemo } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { Header } from '../Header'
 import { Sidebar } from '../Sidebar'
-import { Dashboard, Capture, Transcripts, Analytics, Settings } from '../../pages'
+import { Capture, Transcripts, Settings } from '../../pages'
 import { DictationOverlay } from '../../modules/dictation/dictationOverlay'
+import type { AppTab, UpdateBridge, UpdateManifest } from '../../types'
 
 const Layout: React.FC = () => {
   console.log('[LAYOUT] Component rendering...')
   
-  const [activePage, setActivePage] = useState<'dashboard' | 'capture' | 'transcripts' | 'analytics' | 'settings'>('dashboard')
+  const [activePage, setActivePage] = useState<AppTab>('capture')
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [updateInfo, setUpdateInfo] = useState<any | null>(null)
+  const [updateInfo, setUpdateInfo] = useState<UpdateManifest | null>(null)
   const [dismissedVersion, setDismissedVersion] = useState<string | null>(null)
 
-  const handleUploadComplete = useCallback(() => {
-    console.log('[LAYOUT] Capture completed, switching to dashboard')
-    setActivePage('dashboard')
-  }, [])
-
   useEffect(() => {
-    const bridge = (window as any).transcriptaiUpdates
+    const bridge = (window as typeof window & { transcriptaiUpdates?: UpdateBridge }).transcriptaiUpdates
     if (!bridge || typeof bridge.onAvailable !== 'function') {
       console.warn('[LAYOUT] Update bridge is not available')
       return
     }
 
-    const unsubscribe = bridge.onAvailable((manifest: any) => {
+    const unsubscribe = bridge.onAvailable((manifest: UpdateManifest) => {
       console.log('[LAYOUT] Update manifest received', manifest)
       setUpdateInfo(manifest)
     })
@@ -49,7 +46,7 @@ const Layout: React.FC = () => {
 
   const handleDownloadUpdate = useCallback(() => {
     console.log('[LAYOUT] Download update clicked')
-    const bridge = (window as any).transcriptaiUpdates
+    const bridge = (window as typeof window & { transcriptaiUpdates?: UpdateBridge }).transcriptaiUpdates
 
     try {
       const result = bridge?.openDownload?.()
@@ -63,45 +60,57 @@ const Layout: React.FC = () => {
     }
   }, [])
 
-  const renderPage = () => {
+  const pageContent = useMemo(() => {
     switch (activePage) {
-      case 'dashboard':
-        return <Dashboard onNavigate={setActivePage} />
       case 'capture':
-        return <Capture onNavigate={setActivePage} />
+        return <Capture />
       case 'transcripts':
         return <Transcripts />
-      case 'analytics':
-        return <Analytics />
       case 'settings':
         return <Settings />
       default:
-        return <Dashboard />
+        return <Capture />
     }
-  }
+  }, [activePage])
   
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header
-        activePage={activePage}
-        onPageChange={setActivePage}
-        onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
-        updateInfo={updateInfo}
-        dismissedVersion={dismissedVersion}
-        onDismissUpdate={handleDismissUpdate}
-        onDownloadUpdate={handleDownloadUpdate}
-      />
-      <DictationOverlay />
-      <div className="flex">
-        <Sidebar 
-          isOpen={sidebarOpen} 
-          onToggle={() => setSidebarOpen(!sidebarOpen)}
+    <div className="app-shell bg-hero-gradient text-slate-100">
+      <div className="app-surface min-h-screen flex flex-col">
+        <Header
           activePage={activePage}
           onPageChange={setActivePage}
+          onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
+          updateInfo={updateInfo}
+          dismissedVersion={dismissedVersion}
+          onDismissUpdate={handleDismissUpdate}
+          onDownloadUpdate={handleDownloadUpdate}
         />
-        <main className="flex-1 p-6">
-          {renderPage()}
-        </main>
+        <DictationOverlay />
+        <div className="flex flex-1 gap-6 px-4 pb-8 lg:px-8">
+          <Sidebar 
+            isOpen={sidebarOpen} 
+            onToggle={() => setSidebarOpen(!sidebarOpen)}
+            activePage={activePage}
+            onPageChange={setActivePage}
+          />
+          <main className="relative flex-1 overflow-hidden rounded-3xl glass-surface px-4 py-6 sm:p-8">
+            <div className="pointer-events-none absolute inset-0 bg-grid opacity-40" aria-hidden />
+            <div className="relative z-10 space-y-8">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={activePage}
+                  initial={{ opacity: 0, y: 24 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -16 }}
+                  transition={{ duration: 0.45, ease: [0.4, 0, 0.2, 1] }}
+                  className="space-y-8"
+                >
+                  {pageContent}
+                </motion.div>
+              </AnimatePresence>
+            </div>
+          </main>
+        </div>
       </div>
     </div>
   )

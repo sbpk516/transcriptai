@@ -1,8 +1,29 @@
+function formatDuration(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.floor(totalSeconds))
+  const mins = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  if (mins === 0) {
+    return `${secs}s`
+  }
+  return `${mins}m ${secs.toString().padStart(2, '0')}s`
+}
+
+function formatFileSizeReadable(bytes: number | string): string {
+  if (typeof bytes !== 'number') {
+    return typeof bytes === 'string' ? bytes : 'Unknown'
+  }
+  const mb = bytes / (1024 * 1024)
+  if (mb >= 1) {
+    return `${mb.toFixed(1)} MB`
+  }
+  return `${(bytes / 1024).toFixed(1)} KB`
+}
 import React, { useState, useEffect } from 'react'
 import { apiClient } from '@/services/api/client'
 import { deleteResult, clearAllResults } from '@/services/api/results'
 import { formatTranscript } from '@/utils/transcript'
 import { useTranscriptionStream } from '@/services/api/live'
+import { Button, Card } from '../components/Shared'
 
 // STEP 2: Add basic API integration
 // We'll add API call to fetch transcripts from backend
@@ -114,43 +135,35 @@ const Transcripts: React.FC = () => {
     fetchResults()
   }, [sortDirection])
   
+  const transcriptCount = results.length
+
   return (
-    <div className="p-6">
-      <h1 className="text-3xl font-bold text-gray-900 mb-4">Transcripts</h1>
-      <p className="text-gray-600 mb-4">Review captured calls, transcripts, and analysis details.</p>
-      
-      {/* Status */}
-      <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-        <div className="flex justify-between items-start">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <span className="text-green-400 text-xl">🎯</span>
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-green-800">Transcript Overview</h3>
-              <div className="mt-2 text-sm text-green-700">
-                Refresh after capturing audio to pull the latest sessions, or clear the list when you need a reset.
-              </div>
-            </div>
+    <div className="space-y-8">
+      <section className="glass-surface rounded-3xl border border-white/10 px-6 py-8 shadow-glow md:px-8">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.4em] text-white/60">Transcripts</p>
+            <h1 className="gradient-heading mt-3 text-4xl font-semibold leading-tight">
+              Transcript history
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm text-white/70">
+              Review capture history, live-stream status, and AI summaries inside modern cards with subtle glows.
+            </p>
           </div>
-          
-          {/* Action Buttons */}
-          <div className="flex space-x-3">
-            <button
-              onClick={fetchResults}
-              disabled={loading}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? '🔄' : '🔄'} Refresh Transcripts
-            </button>
-            <button
+          <div className="flex flex-wrap gap-3">
+            <Button variant="ghost" size="sm" onClick={fetchResults} disabled={loading}>
+              {loading ? 'Refreshing…' : 'Refresh'}
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              disabled={loading || clearing}
               onClick={async () => {
-                if (!confirm('This will delete ALL transcripts from the database and remove uploaded files. Continue?')) return
+                if (!confirm('Delete ALL transcripts and uploaded artifacts?')) return
                 try {
                   setClearing(true)
                   setClearError(null)
                   await clearAllResults()
-                  // Reset local state
                   setResults([])
                   setExpandedId(null)
                   setDetailsCache({})
@@ -163,405 +176,357 @@ const Transcripts: React.FC = () => {
                   setClearing(false)
                 }
               }}
-              disabled={loading || clearing}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {clearing ? 'Deleting…' : '🗑️ Clear DB'}
-            </button>
-            <button
+              {clearing ? 'Deleting…' : 'Clear All'}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 try {
                   localStorage.clear()
-                  console.log('[TRANSCRIPTS] Local storage cleared')
                 } catch (e) {
                   console.warn('[TRANSCRIPTS] Failed to clear localStorage', e)
                 }
               }}
-              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
             >
-              🧹 Clear Local
-            </button>
+              Clear Local Cache
+            </Button>
           </div>
         </div>
-      </div>
-      
-      {/* Loading State */}
+        <div className="mt-6 grid gap-3 sm:grid-cols-3 text-center text-xs uppercase tracking-[0.3em] text-white/70">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <p className="text-2xl font-semibold text-white">{transcriptCount}</p>
+            <p>Records</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <p className="text-2xl font-semibold text-emerald-300">
+              {results.filter(r => r.status === 'completed').length}
+            </p>
+            <p>Completed</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <p className="text-2xl font-semibold text-pink-300">
+              {results.filter(r => r.status !== 'completed').length}
+            </p>
+            <p>In Flight</p>
+          </div>
+        </div>
+      </section>
       {loading && (
-        <div className="text-center py-8">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading transcripts from API...</p>
+        <div className="glass-surface rounded-3xl border border-white/10 px-6 py-10 text-center text-white/80 shadow-glow">
+          <div className="mx-auto h-12 w-12 animate-spin rounded-full border-b-2 border-cyan-400" />
+          <p className="mt-4 text-sm">Loading transcripts from the backend…</p>
         </div>
       )}
       
-      {/* Error State */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <span className="text-red-400 text-xl">❌</span>
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">API Error</h3>
-              <div className="mt-2 text-sm text-red-700">{error}</div>
+        <div className="glass-surface rounded-2xl border border-rose-500/30 px-5 py-4 text-sm text-rose-100 shadow-glow-pink">
+          <div className="flex items-center gap-3">
+            <span className="text-xl">⚠️</span>
+            <div>
+              <p className="font-semibold">API Error</p>
+              <p className="text-white/70">{error}</p>
             </div>
           </div>
         </div>
       )}
       {clearError && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <span className="text-yellow-500 text-xl">⚠️</span>
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-yellow-800">Clear Error</h3>
-              <div className="mt-2 text-sm text-yellow-700">{clearError}</div>
+        <div className="glass-surface rounded-2xl border border-yellow-400/30 px-5 py-4 text-sm text-yellow-100 shadow-glow">
+          <div className="flex items-center gap-3">
+            <span className="text-xl">⚡</span>
+            <div>
+              <p className="font-semibold">Clear Error</p>
+              <p className="text-white/70">{clearError}</p>
             </div>
           </div>
         </div>
       )}
       
-      {/* Transcript Display */}
       {!loading && !error && (
         <div className="space-y-4">
-          <h2 className="text-xl font-semibold text-gray-900">Transcripts ({results.length}) - Page 1 of 1</h2>
-          <p className="text-sm text-gray-600 mb-4">
-            💡 <strong>Tip:</strong> Capture new audio or upload files, then refresh to see the latest transcripts.
-          </p>
-          
-          {results.length === 0 ? (
-            <div className="text-center py-8">
-              <div className="text-6xl mb-4">📭</div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No Transcripts Found</h3>
-              <p className="text-gray-600">Capture or upload audio to generate transcripts here.</p>
+          <Card
+            title={`Transcripts (${transcriptCount})`}
+            subtitle="Capture new audio and refresh to sync the latest entries."
+            icon="📡"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-4 text-sm text-white/70">
+              <p>Sort by created date</p>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const next = sortDirection === 'desc' ? 'asc' : 'desc'
+                  setSortDirection(next)
+                }}
+              >
+                {sortDirection === 'desc' ? 'Newest first' : 'Oldest first'}
+              </Button>
             </div>
+          </Card>
+
+          {results.length === 0 ? (
+            <Card title="No Transcripts" subtitle="Capture or upload audio to populate this view." icon="📭">
+              <p className="text-sm text-white/70">
+                Once you complete a capture, transcripts appear here instantly.
+              </p>
+            </Card>
           ) : (
-            <div className="bg-white shadow rounded-lg overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h3 className="text-lg font-medium text-gray-900">Recent Transcripts</h3>
-                <p className="text-sm text-gray-500 mt-1">Showing {results.length} processed recordings</p>
-              </div>
-              {/* Column header row for alignment with list */}
-              <div className="px-6 py-2 bg-gray-50 border-t border-gray-200">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-medium text-gray-500">
-                  <div>Call</div>
-                  <div>File</div>
-                  <div className="text-right">
-                    <button
-                      type="button"
-                      aria-pressed={sortDirection === 'desc'}
-                      aria-label={`Sort by created time ${sortDirection === 'desc' ? 'descending (newest first)' : 'ascending (oldest first)'}`}
-                      onClick={() => {
-                        const next = sortDirection === 'desc' ? 'asc' : 'desc'
-                        console.log('[TRANSCRIPTS] 🔁 Toggling sort direction:', { from: sortDirection, to: next })
-                        setSortDirection(next)
-                      }}
-                      className="inline-flex items-center space-x-1 text-gray-700 hover:text-gray-900"
-                    >
-                      <span>Created</span>
-                      <span aria-hidden="true">{sortDirection === 'desc' ? '▼' : '▲'}</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div className="divide-y divide-gray-200">
-                {results.map((result, index) => (
-                  <div key={index} className="px-6 py-4 hover:bg-gray-50">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {/* Call ID and Status */}
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">
-                          Call ID: {result.call_id?.slice(0, 8) || 'Unknown'}
-                        </p>
-                        <div className="mt-1">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            result.status === 'completed' ? 'bg-green-100 text-green-800' :
-                            result.status === 'processing' ? 'bg-yellow-100 text-yellow-800' :
-                            result.status === 'failed' ? 'bg-red-100 text-red-800' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>
-                            {result.status === 'completed' ? '✅' : 
-                             result.status === 'processing' ? '🔄' : 
-                             result.status === 'failed' ? '❌' : '❓'}
-                            {result.status || 'Unknown'}
+            <div className="space-y-4">
+              {results.map((result) => {
+                const status = result.status || 'unknown'
+                const statusStyles =
+                  status === 'completed'
+                    ? 'border-emerald-400/30 text-emerald-200'
+                    : status === 'processing'
+                      ? 'border-yellow-400/30 text-yellow-100'
+                      : status === 'failed'
+                        ? 'border-pink-500/40 text-rose-200'
+                        : 'border-white/20 text-white/70'
+
+                const fileName =
+                  result.file_info?.original_filename ||
+                  result.file_info?.file_path?.split('/')?.pop() ||
+                  result.call_id
+                const durationSeconds = typeof result.audio_analysis?.duration === 'number'
+                  ? result.audio_analysis.duration
+                  : null
+                return (
+                  <Card
+                    key={result.call_id}
+                    title={fileName}
+                    subtitle={result.created_at ? new Date(result.created_at).toLocaleString() : 'Unknown date'}
+                    className="space-y-4"
+                  >
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="flex flex-wrap items-center gap-3 text-xs uppercase tracking-[0.3em]">
+                        <span className={`rounded-full border px-3 py-1 ${statusStyles}`}>
+                          {status}
+                        </span>
+                        {durationSeconds != null && (
+                          <span className="rounded-full border border-white/15 px-3 py-1 text-white/70 normal-case">
+                            {formatDuration(durationSeconds)}
                           </span>
-                        </div>
-                      </div>
-                      
-                      {/* File Info */}
-                      <div>
-                        <p className="text-sm text-gray-500 truncate" title={(result.file_info?.original_filename || (result.file_info?.file_path ? result.file_info.file_path.split('/').pop() : 'Unknown'))}>
-                          {(() => {
-                            const storedName = result.file_info?.file_path 
-                              ? result.file_info.file_path.split('/').pop() 
-                              : null
-                            const original = result.file_info?.original_filename || storedName || 'Unknown'
-                            return <>File: {original}</>
-                          })()}
-                        </p>
-                        {result.file_info?.original_filename && result.file_info?.file_path && (
-                          <p className="text-xs text-gray-400 mt-1">
-                            Stored as: {result.file_info.file_path.split('/').pop()}
-                          </p>
                         )}
                         {result.file_info?.file_size && (
-                          <p className="text-xs text-gray-400 mt-1">
-                            Size: {typeof result.file_info.file_size === 'number' 
-                              ? `${(result.file_info.file_size / 1024).toFixed(1)} KB`
-                              : result.file_info.file_size === 'Unknown' 
-                                ? 'Unknown'
-                                : result.file_info.file_size
-                            }
-                          </p>
+                          <span className="rounded-full border border-white/15 px-3 py-1 text-white/70 normal-case">
+                            {formatFileSizeReadable(result.file_info.file_size)}
+                          </span>
                         )}
                       </div>
-                      
-                      {/* Date and Duration */}
-                      <div className="text-right">
-                        <p
-                          className="text-sm text-gray-500"
-                          title={result.created_at || ''}
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => onToggleDetails(result.call_id)}
                         >
-                          {result.created_at
-                            ? new Date(result.created_at).toLocaleString(undefined, {
-                                year: 'numeric', month: 'short', day: '2-digit',
-                                hour: '2-digit', minute: '2-digit'
+                          {expandedId === result.call_id ? 'Hide details' : 'Show transcript'}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={async () => {
+                            if (!confirm('Delete this result permanently?')) return
+                            try {
+                              setDeletingId(result.call_id)
+                              setDeleteErrors(prev => ({ ...prev, [result.call_id]: '' }))
+                              await deleteResult(result.call_id)
+                              setResults(prev => prev.filter(r => r.call_id !== result.call_id))
+                              setExpandedId(prev => (prev === result.call_id ? null : prev))
+                              setDetailsCache(prev => {
+                                const copy = { ...prev }
+                                delete copy[result.call_id]
+                                return copy
                               })
-                            : 'Unknown date'}
-                        </p>
-                        {result.audio_analysis?.duration && (
-                          <p className="text-xs text-gray-400 mt-1">
-                            Duration: {typeof result.audio_analysis.duration === 'number' 
-                              ? `${Math.round(result.audio_analysis.duration)}s`
-                              : result.audio_analysis.duration === 'Unknown' 
-                                ? 'Unknown'
-                                : result.audio_analysis.duration
+                            } catch (err) {
+                              const msg = err instanceof Error ? err.message : 'Failed to delete result'
+                              setDeleteErrors(prev => ({ ...prev, [result.call_id]: msg }))
+                            } finally {
+                              setDeletingId(null)
                             }
-                          </p>
-                        )}
-                        <div className="mt-3">
-                          <button
-                            onClick={() => onToggleDetails(result.call_id)}
-                            className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700"
-                          >
-                            {expandedId === result.call_id ? 'Hide details' : 'View details'}
-                          </button>
-                          <button
-                            onClick={async () => {
-                              if (!confirm('Delete this result permanently?')) return
-                              try {
-                                setDeletingId(result.call_id)
-                                setDeleteErrors(prev => ({ ...prev, [result.call_id]: '' }))
-                                await deleteResult(result.call_id)
-                                // Remove from list and caches
-                                setResults(prev => prev.filter(r => r.call_id !== result.call_id))
-                                setExpandedId(prev => (prev === result.call_id ? null : prev))
-                                setDetailsCache(prev => {
-                                  const copy = { ...prev }
-                                  delete copy[result.call_id]
-                                  return copy
-                                })
-                              } catch (err) {
-                                const msg = err instanceof Error ? err.message : 'Failed to delete result'
-                                setDeleteErrors(prev => ({ ...prev, [result.call_id]: msg }))
-                              } finally {
-                                setDeletingId(null)
-                              }
-                            }}
-                            disabled={deletingId === result.call_id}
-                            className={`ml-3 inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium ${deletingId === result.call_id ? 'bg-gray-300 text-gray-700' : 'bg-red-600 text-white hover:bg-red-700'}`}
-                          >
-                            {deletingId === result.call_id ? 'Deleting…' : 'Delete'}
-                          </button>
-                          {deleteErrors[result.call_id] && (
-                            <div className="text-xs text-red-600 mt-1">{deleteErrors[result.call_id]}</div>
-                          )}
-                        </div>
+                          }}
+                          disabled={deletingId === result.call_id}
+                        >
+                          {deletingId === result.call_id ? 'Deleting…' : 'Delete'}
+                        </Button>
                       </div>
                     </div>
-                    
-                    {/* Lazy-loaded Details Panel */}
+                    {deleteErrors[result.call_id] && (
+                      <p className="text-xs text-rose-300">{deleteErrors[result.call_id]}</p>
+                    )}
+
                     {expandedId === result.call_id && (
-                      <div className="mt-4 p-4 border-t border-gray-100 bg-gray-50 rounded">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="text-sm text-gray-500 flex items-center gap-3 min-w-0">
-                            <span className="shrink-0">Call ID: {result.call_id}</span>
-                            <span className="text-gray-300">|</span>
-                            <span
-                              className="text-gray-600 max-w-[28rem] truncate"
-                              title={result.file_info?.original_filename || (result.file_info?.file_path ? result.file_info.file_path.split('/').pop() : 'Unknown')}
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/80 space-y-4">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                          <p className="text-white/60">Call ID: {result.call_id}</p>
+                          <div className="flex flex-wrap gap-2 items-center">
+                            {reanalyzingId === result.call_id && (
+                              <span className="text-xs text-white/60">Reanalyzing…</span>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => reanalyzeCall(result.call_id)}
+                              disabled={reanalyzingId === result.call_id}
                             >
-                              File: {result.file_info?.original_filename || (result.file_info?.file_path ? result.file_info.file_path.split('/').pop() : 'Unknown')}
-                            </span>
+                              Reanalyze
+                            </Button>
                           </div>
-                        <div className="flex items-center gap-3">
-                          {reanalyzingId === result.call_id && (
-                            <span className="text-sm text-gray-600">Reanalyzing…</span>
-                          )}
-                          <button
-                            onClick={() => reanalyzeCall(result.call_id)}
-                            disabled={reanalyzingId === result.call_id}
-                            className={`px-3 py-1.5 rounded-md text-sm font-medium ${reanalyzingId === result.call_id ? 'bg-gray-300 text-gray-700' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
-                          >
-                            Reanalyze
-                          </button>
-                        </div>
                         </div>
                         {detailLoadingId === result.call_id && (
-                          <div className="text-sm text-gray-600">Loading details…</div>
+                          <p className="text-white/70">Loading details…</p>
                         )}
                         {detailErrors[result.call_id] && (
-                          <div className="text-sm text-red-600">{detailErrors[result.call_id]}</div>
+                          <p className="text-rose-300">{detailErrors[result.call_id]}</p>
                         )}
                         {reanalyzeErrors[result.call_id] && (
-                          <div className="text-sm text-red-600">{reanalyzeErrors[result.call_id]}</div>
+                          <p className="text-rose-300">{reanalyzeErrors[result.call_id]}</p>
                         )}
-                        {/* Live transcript (beta) when processing/transcribing */}
-                        {(['processing','transcribing'] as const).includes(result.status as any) && (
-                          <div className="mb-3 p-3 border border-yellow-200 rounded bg-yellow-50 text-sm">
-                            <div className="font-medium text-yellow-800 mb-1">Live Transcript (beta)</div>
+                        {(['processing', 'transcribing'] as const).includes(result.status as any) && (
+                          <div className="rounded-2xl border border-yellow-400/30 bg-yellow-500/10 p-3 text-sm text-yellow-100">
+                            <p className="font-semibold">Live Transcript (beta)</p>
                             <LiveTranscript callId={result.call_id} />
                           </div>
                         )}
                         {detailsCache[result.call_id] && (
                           <div className="space-y-3">
-                            <div>
-                              <div className="text-xs text-gray-500 mb-1">Transcript</div>
-                              {/* Formatting controls */}
-                              <div className="flex items-center gap-3 mb-2 text-xs text-gray-600">
-                                <label className="inline-flex items-center gap-2">
-                                  <input
-                                    type="checkbox"
-                                    checked={formattingOn}
-                                    onChange={(e) => setFormattingOn(e.target.checked)}
-                                  />
-                                  Neat formatting
-                                </label>
-                                <label className="inline-flex items-center gap-2">
-                                  <span>Sentences/paragraph</span>
-                                  <select
-                                    className="border border-gray-300 rounded px-1 py-0.5 bg-white"
-                                    value={sentencesPerParagraph}
-                                    onChange={(e) => setSentencesPerParagraph(parseInt(e.target.value) || 3)}
-                                  >
-                                    <option value={2}>2</option>
-                                    <option value={3}>3</option>
-                                    <option value={4}>4</option>
-                                  </select>
-                                </label>
-                                {/* Copy and Download actions */}
-                                <div className="ml-auto flex items-center gap-2 relative">
-                                  <button
-                                    type="button"
-                                    aria-label="Copy transcript"
-                                    title="Copy transcript"
-                                    className="p-1.5 rounded border border-gray-300 hover:bg-gray-100"
-                                    onClick={async () => {
-                                      try {
-                                        const raw = detailsCache[result.call_id]?.transcription?.transcription_text || ''
-                                        const text = formattingOn
-                                          ? (formatTranscript(raw, { sentencesPerParagraph, preserveExistingNewlines: true }) || []).join('\n\n')
-                                          : raw
-                                        if (navigator.clipboard && navigator.clipboard.writeText) {
-                                          await navigator.clipboard.writeText(text)
-                                        } else {
-                                          const ta = document.createElement('textarea')
-                                          ta.value = text
-                                          ta.style.position = 'fixed'
-                                          ta.style.left = '-9999px'
-                                          document.body.appendChild(ta)
-                                          ta.focus()
-                                          ta.select()
-                                          document.execCommand('copy')
-                                          document.body.removeChild(ta)
-                                        }
-                                        setCopied(true)
-                                        window.setTimeout(() => setCopied(false), 1500)
-                                      } catch (e) {
-                                        console.warn('Copy failed', e)
+                            <div className="flex flex-wrap gap-3 text-xs text-white/70">
+                              <label className="inline-flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={formattingOn}
+                                  onChange={(e) => setFormattingOn(e.target.checked)}
+                                />
+                                Neat formatting
+                              </label>
+                              <label className="inline-flex items-center gap-2">
+                                <span>Sentences/paragraph</span>
+                                <select
+                                  className="rounded border border-white/20 bg-transparent px-2 py-1"
+                                  value={sentencesPerParagraph}
+                                  onChange={(e) =>
+                                    setSentencesPerParagraph(parseInt(e.target.value) || 3)
+                                  }
+                                >
+                                  <option value={2}>2</option>
+                                  <option value={3}>3</option>
+                                  <option value={4}>4</option>
+                                </select>
+                              </label>
+                              <div className="ml-auto flex gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={async () => {
+                                    try {
+                                      const raw =
+                                        detailsCache[result.call_id]?.transcription?.transcription_text ||
+                                        ''
+                                      const text = formattingOn
+                                        ? (formatTranscript(raw, {
+                                            sentencesPerParagraph,
+                                            preserveExistingNewlines: true,
+                                          }) || []
+                                          ).join('\n\n')
+                                        : raw
+                                      if (navigator.clipboard?.writeText) {
+                                        await navigator.clipboard.writeText(text)
                                       }
-                                    }}
-                                  >
-                                    <img src={`${import.meta.env.BASE_URL}copy_icon.png`} alt="Copy" className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    aria-label="Download transcript (.txt)"
-                                    title="Download transcript (.txt)"
-                                    className="p-1.5 rounded border border-gray-300 hover:bg-gray-100"
-                                    onClick={() => {
-                                      try {
-                                        const raw = detailsCache[result.call_id]?.transcription?.transcription_text || ''
-                                        const text = formattingOn
-                                          ? (formatTranscript(raw, { sentencesPerParagraph, preserveExistingNewlines: true }) || []).join('\n\n')
-                                          : raw
-                                        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
-                                        const url = URL.createObjectURL(blob)
-                                        const a = document.createElement('a')
-                                        // Filename: prefer original filename without extension; fallback to call_id
-                                        const original = detailsCache[result.call_id]?.file_info?.original_filename
-                                        const fromPath = detailsCache[result.call_id]?.file_info?.file_path?.split?.('/')?.pop()
-                                        const base = (original || fromPath || result.call_id).replace(/\.[^.]+$/, '')
-                                        a.download = `${base}.txt`
-                                        a.href = url
-                                        document.body.appendChild(a)
-                                        a.click()
-                                        document.body.removeChild(a)
-                                        URL.revokeObjectURL(url)
-                                      } catch (e) {
-                                        console.warn('Download failed', e)
-                                      }
-                                    }}
-                                  >
-                                    <span className="text-base">⬇️</span>
-                                  </button>
-                                  {copied && (
-                                    <div className="absolute -bottom-7 right-0 px-2 py-1 rounded bg-green-100 text-green-700 text-xs shadow">
-                                      Copied!
-                                    </div>
-                                  )}
-                                </div>
+                                      setCopied(true)
+                                      window.setTimeout(() => setCopied(false), 1500)
+                                    } catch (e) {
+                                      console.warn('Copy failed', e)
+                                    }
+                                  }}
+                                >
+                                  Copy
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    try {
+                                      const raw =
+                                        detailsCache[result.call_id]?.transcription?.transcription_text ||
+                                        ''
+                                      const text = formattingOn
+                                        ? (formatTranscript(raw, {
+                                            sentencesPerParagraph,
+                                            preserveExistingNewlines: true,
+                                          }) || []
+                                          ).join('\n\n')
+                                        : raw
+                                      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+                                      const url = URL.createObjectURL(blob)
+                                      const original =
+                                        detailsCache[result.call_id]?.file_info?.original_filename
+                                      const fromPath =
+                                        detailsCache[result.call_id]?.file_info?.file_path
+                                          ?.split?.('/')
+                                          ?.pop()
+                                      const base = (original || fromPath || result.call_id).replace(
+                                        /\.[^.]+$/,
+                                        ''
+                                      )
+                                      const a = document.createElement('a')
+                                      a.download = `${base}.txt`
+                                      a.href = url
+                                      document.body.appendChild(a)
+                                      a.click()
+                                      document.body.removeChild(a)
+                                      URL.revokeObjectURL(url)
+                                    } catch (e) {
+                                      console.warn('Download failed', e)
+                                    }
+                                  }}
+                                >
+                                  Download
+                                </Button>
+                                {copied && (
+                                  <span className="rounded-full border border-emerald-300/30 px-3 py-1 text-xs text-emerald-200">
+                                    Copied!
+                                  </span>
+                                )}
                               </div>
-                              <TranscriptBlock
-                                text={detailsCache[result.call_id]?.transcription?.transcription_text || ''}
-                                enabled={formattingOn}
-                                sentencesPerParagraph={sentencesPerParagraph}
-                              />
                             </div>
-                            {detailsCache[result.call_id]?.nlp_analysis && (
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                            <TranscriptBlock
+                              text={detailsCache[result.call_id]?.transcription?.transcription_text || ''}
+                              enabled={formattingOn}
+                              sentencesPerParagraph={sentencesPerParagraph}
+                            />
+                            {detailsCache[result.call_id]?.nlp_analysis ? (
+                              <div className="grid gap-4 md:grid-cols-3 text-sm">
                                 <div>
-                                  <div className="text-xs text-gray-500">Sentiment</div>
-                                  <div className="font-medium">
+                                  <p className="text-xs text-white/50">Sentiment</p>
+                                  <p className="font-semibold text-white">
                                     {detailsCache[result.call_id].nlp_analysis.sentiment?.overall || 'neutral'}
-                                  </div>
+                                  </p>
                                 </div>
                                 <div>
-                                  <div className="text-xs text-gray-500">Intent</div>
-                                  <div className="font-medium">
+                                  <p className="text-xs text-white/50">Intent</p>
+                                  <p className="font-semibold text-white">
                                     {detailsCache[result.call_id].nlp_analysis.intent?.detected || 'unknown'}
-                                  </div>
+                                  </p>
                                 </div>
                                 <div>
-                                  <div className="text-xs text-gray-500">Risk</div>
-                                  <div className="font-medium">
+                                  <p className="text-xs text-white/50">Risk</p>
+                                  <p className="font-semibold text-white">
                                     {detailsCache[result.call_id].nlp_analysis.risk?.escalation_risk || 'low'}
-                                  </div>
+                                  </p>
                                 </div>
                               </div>
-                            )}
-                            {!detailsCache[result.call_id]?.nlp_analysis && (
-                              <div className="text-sm text-gray-600">
-                                No analysis available — this call wasn’t processed by the full pipeline or NLP failed.
-                              </div>
+                            ) : (
+                              <p className="text-sm text-white/60">
+                                No NLP analysis available for this call.
+                              </p>
                             )}
                           </div>
                         )}
                       </div>
                     )}
-                  </div>
-                ))}
-              </div>
+                  </Card>
+                )
+              })}
             </div>
           )}
         </div>
@@ -579,12 +544,12 @@ export default Transcripts
 // Local component for rendering formatted transcript
 const TranscriptBlock: React.FC<{ text: string; enabled: boolean; sentencesPerParagraph: number }> = ({ text, enabled, sentencesPerParagraph }) => {
   if (!text || !text.trim()) {
-    return <div className="text-sm text-gray-600">No transcript available</div>
+    return <div className="text-sm text-white/60">No transcript available</div>
   }
 
   if (!enabled) {
     return (
-      <div className="text-sm text-gray-800 whitespace-pre-wrap">
+      <div className="whitespace-pre-wrap text-sm text-white/80">
         {text}
       </div>
     )
@@ -596,7 +561,7 @@ const TranscriptBlock: React.FC<{ text: string; enabled: boolean; sentencesPerPa
   return (
     <div className="space-y-3">
       {paragraphs.map((p, idx) => (
-        <p key={idx} className="text-sm text-gray-800 leading-6">
+        <p key={idx} className="text-sm leading-6 text-white/80">
           {p}
         </p>
       ))}
@@ -607,17 +572,17 @@ const TranscriptBlock: React.FC<{ text: string; enabled: boolean; sentencesPerPa
 function LiveTranscript({ callId }: { callId: string }) {
   const { text, completed, error, progress } = useTranscriptionStream(callId)
   if (error) {
-    return <div className="text-xs text-gray-500">Live updates unavailable.</div>
+    return <div className="text-xs text-white/60">Live updates unavailable.</div>
   }
   return (
     <div>
       {progress != null && !completed && (
-        <div className="text-xs text-gray-600 mb-1">Progress: {Math.round(progress)}%</div>
+        <div className="mb-1 text-xs text-white/70">Progress: {Math.round(progress)}%</div>
       )}
-      <div className="whitespace-pre-wrap text-gray-800 text-sm min-h-[2rem]">
+      <div className="min-h-[2rem] whitespace-pre-wrap text-sm text-white/80">
         {text || (!completed ? 'Waiting for partial results…' : 'No text')}
       </div>
-      {completed && <div className="mt-1 text-xs text-green-700">Completed</div>}
+      {completed && <div className="mt-1 text-xs text-emerald-200">Completed</div>}
     </div>
   )
 }

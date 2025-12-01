@@ -1,6 +1,7 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react'
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { API_ENDPOINTS, UI_CONFIG } from '../types/constants'
 import { apiClient } from '@/services/api/client'
+import { Button, Card } from '../components/Shared'
 // Live batch mode: final transcript only; no SSE stream
 
 interface UploadFile {
@@ -16,11 +17,7 @@ interface UploadFile {
   uploadedAt?: string
 }
 
-interface CaptureProps {
-  onNavigate?: (page: 'dashboard' | 'capture' | 'transcripts') => void
-}
-
-const Capture: React.FC<CaptureProps> = ({ onNavigate }) => {
+const Capture: React.FC = () => {
   const [files, setFiles] = useState<UploadFile[]>([])
   const [isDragOver, setIsDragOver] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -615,77 +612,87 @@ const Capture: React.FC<CaptureProps> = ({ onNavigate }) => {
     updateFiles(prev => prev.filter(f => f.id !== fileId))
   }
 
+  const uploadStats = useMemo(() => {
+    const completed = files.filter(f => f.status === 'completed').length
+    const processing = files.filter(f => f.status === 'processing' || f.status === 'uploading').length
+    const pending = files.filter(f => f.status === 'pending').length
+    return {
+      total: files.length,
+      completed,
+      processing,
+      pending,
+    }
+  }, [files])
+
+  const hasFiles = files.length > 0
+
   return (
-    <div className="min-h-screen bg-[#f4f6fb]">
-      <div className="max-w-6xl mx-auto px-6 py-10 space-y-8">
-        {/* Header */}
-        <div className="text-center space-y-3">
-          <h1 className="text-4xl font-semibold text-gray-900">Capture Audio</h1>
-          <p className="text-gray-600 text-base max-w-2xl mx-auto">
-            Record live or import existing audio for transcription and analysis. Supported formats: WAV, MP3, M4A, FLAC
-          </p>
-        </div>
-
-        {modelStatusMessage && (
-          <div
-            className={`flex items-center gap-3 rounded-lg border px-4 py-3 text-sm ${
-              modelStatus === 'loading'
-                ? 'border-yellow-200 bg-yellow-50 text-yellow-700'
-                : modelStatus === 'not_loaded'
-                  ? 'border-red-200 bg-red-50 text-red-700'
-                  : 'border-blue-200 bg-blue-50 text-blue-700'
-            }`}
-          >
-            <span
-              className={`inline-flex h-2 w-2 rounded-full ${
-                modelStatus === 'loading'
-                  ? 'bg-yellow-400 animate-pulse'
-                  : modelStatus === 'not_loaded'
-                    ? 'bg-red-400'
-                    : 'bg-blue-400 animate-pulse'
-              }`}
-            />
-            <span>{modelStatusMessage}</span>
-          </div>
-        )}
-
-        {/* Notifications for newly completed files */}
-        {newlyCompleted.length > 0 && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <div className="flex items-center">
-              <span className="text-green-400 text-xl mr-3">✅</span>
-              <div>
-                <h3 className="text-sm font-medium text-green-800">
-                  {newlyCompleted.length === 1 ? 'File completed!' : `${newlyCompleted.length} files completed!`}
-                </h3>
-                <p className="text-sm text-green-700 mt-1">
-                  {newlyCompleted.length === 1 
-                    ? 'Your file has finished processing and is ready for download.'
-                    : 'Your files have finished processing and are ready for download.'
-                  }
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="grid gap-6 lg:grid-cols-2">
-          {/* Live Mic card */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8">
-            <div className="flex items-center gap-3 mb-4">
-              <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-                <span role="img" aria-hidden>🎤</span> Live Mic
-              </h2>
-              <span className="text-xs font-semibold uppercase tracking-wide bg-blue-100 text-blue-600 px-2 py-1 rounded-full">
-                Beta
-              </span>
-            </div>
-            <p className="text-sm text-gray-600 mb-6">
-              Capture ad-hoc audio directly from your browser. Start and stop to generate transcripts instantly.
+    <div className="space-y-8">
+      <section className="glass-surface rounded-3xl border border-white/10 px-6 py-8 shadow-glow md:px-8">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.4em] text-white/60">Capture</p>
+            <h1 className="gradient-heading mt-3 text-4xl font-semibold leading-tight">
+              Audio Capture
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm text-white/70">
+              Record live or import existing audio files for instant AI-powered transcription. Supported formats: WAV, MP3, M4A, FLAC (up to 10GB).
             </p>
-            <div className="bg-blue-50 border border-blue-100 rounded-xl p-6 mb-6">
+          </div>
+          
+        </div>
+      </section>
+
+      {modelStatusMessage && (
+        <div
+          className={`glass-surface flex items-center gap-3 rounded-2xl border px-4 py-4 text-sm shadow-glow ${
+            modelStatus === 'loading'
+              ? 'border-yellow-400/30 text-yellow-100'
+              : modelStatus === 'not_loaded'
+                ? 'border-pink-500/40 text-rose-100'
+                : 'border-cyan-400/30 text-cyan-100'
+          }`}
+        >
+          <span
+            className={`inline-flex h-3 w-3 rounded-full ${
+              modelStatus === 'loading'
+                ? 'bg-yellow-300 animate-pulse'
+                : modelStatus === 'not_loaded'
+                  ? 'bg-pink-500'
+                  : 'bg-cyan-300 animate-ping'
+            }`}
+          />
+          <span>{modelStatusMessage}</span>
+        </div>
+      )}
+
+      {newlyCompleted.length > 0 && (
+        <div className="glass-surface rounded-2xl border border-emerald-400/20 px-4 py-4 text-sm text-emerald-100 shadow-glow-green">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">✨</span>
+            <div>
+              <p className="font-semibold">
+                {newlyCompleted.length === 1 ? 'Fresh transcript ready' : `${newlyCompleted.length} files just finished`}
+              </p>
+              <p className="text-white/70">
+                Completed transcripts auto-sync with the Transcripts tab in real time.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Card
+          title="Live Mic"
+          subtitle="Capture ad-hoc sessions with animated visual feedback."
+          icon="🎤"
+          className="relative overflow-hidden"
+        >
+          <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-gradient-to-br from-pink-500/40 to-cyan-400/40 blur-3xl" aria-hidden />
+          <div className="relative z-10 space-y-6">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
               <LiveMicPanel
-                onNavigate={onNavigate}
                 onTranscriptStart={() => {
                   console.log('[DEBUG] onTranscriptStart called - Resetting states')
                   console.log('[DEBUG] Previous state:', { 
@@ -724,278 +731,230 @@ const Capture: React.FC<CaptureProps> = ({ onNavigate }) => {
                 }}
               />
             </div>
-            <div className="text-sm text-blue-700 bg-blue-100 border border-blue-200 rounded-xl px-4 py-3">
-              <strong>Tip:</strong> Keep the browser tab focused while recording for best results. You can view the finished transcript in the Transcripts tab.
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/70">
+              Keep the tab focused for the best live capture fidelity. Completed takes appear under Transcripts automatically.
             </div>
           </div>
+        </Card>
 
-          {/* Import card */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 flex flex-col gap-6">
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900 mb-2">Import Audio Files</h2>
-              <p className="text-sm text-gray-600">
-                Upload existing audio files for transcription and analysis.
-              </p>
-            </div>
-
-            <div
-              className={`rounded-2xl border-2 border-dashed text-center p-10 transition-all ${
-                isDragOver ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-blue-300'
-              }`}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
+        <Card
+          title="Import Audio"
+          subtitle="Drag & drop uploader with progress pulses."
+          icon="📼"
+          className="flex flex-col gap-6"
+        >
+          <div
+            className={`rounded-2xl border-2 border-dashed p-10 text-center transition-all ${
+              isDragOver ? 'border-cyan-400 bg-white/10' : 'border-white/20 hover:border-cyan-300/70'
+            }`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            <div className="mb-4 text-5xl">🎶</div>
+            <h3 className="text-xl font-semibold">Drop audio files here or browse</h3>
+            <p className="mt-2 text-sm text-white/70">
+              Drag your files in or use the selector to stay in flow.
+            </p>
+            <input
+              id="file-input"
+              type="file"
+              multiple
+              accept="audio/*"
+              onChange={(e) => handleFileSelect(e.target.files)}
+              className="hidden"
+            />
+            <Button
+              variant="primary"
+              size="md"
+              className="mt-6"
+              onClick={() => document.getElementById('file-input')?.click()}
             >
-              <div className="text-5xl mb-4 text-blue-500">🎶</div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                Drop audio files here, or click to browse
-              </h3>
-              <p className="text-sm text-gray-500 mb-4">
-                Drag and drop your audio files, or click the button below to select files
-              </p>
-              <input
-                id="file-input"
-                type="file"
-                multiple
-                accept="audio/*"
-                onChange={(e) => handleFileSelect(e.target.files)}
-                className="hidden"
-              />
-              <button
-                onClick={() => document.getElementById('file-input')?.click()}
-                className="inline-flex items-center gap-2 px-5 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all"
-              >
-                <span className="text-lg">⬆️</span>
-                Choose Files
-              </button>
-            </div>
+              Choose Files
+            </Button>
+          </div>
 
-            {files.length > 0 && (
-              <div className="space-y-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
-                  <div className="flex space-x-3">
-                    <button
-                      onClick={startUpload}
-                      disabled={uploading || !files.some(f => f.status === 'pending')}
-                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-                    >
-                      🚀 Process Files
-                    </button>
-                    <button
-                      onClick={clearCompleted}
-                      disabled={!files.some(f => f.status === 'completed')}
-                      className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50"
-                    >
-                      🗑️ Clear Completed
-                    </button>
-                  </div>
+          {hasFiles && (
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    variant="success"
+                    size="sm"
+                    onClick={startUpload}
+                    disabled={uploading || !files.some(f => f.status === 'pending')}
+                    isLoading={uploading}
+                  >
+                    Process Files
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearCompleted}
+                    disabled={!files.some(f => f.status === 'completed')}
+                  >
+                    Clear Completed
+                  </Button>
                 </div>
+              </div>
 
-                <div className="space-y-3">
-                  {files.map((file) => (
-                    <div
-                      key={file.id}
-                      className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-gray-50 rounded-xl"
-                    >
-                      <div className="flex items-center space-x-4 flex-1">
-                        <div className="text-2xl">
-                          {file.status === 'completed' ? '✅' : 
-                           file.status === 'uploading' ? '🔼' : 
-                           file.status === 'processing' ? '🔄' :
-                           file.status === 'error' ? '❌' : '📁'}
+              <div className="space-y-3">
+                {files.map((file) => (
+                  <div
+                    key={file.id}
+                    className="rounded-2xl border border-white/10 bg-white/[0.04] p-4"
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex flex-1 flex-col gap-1">
+                        <div className="flex flex-wrap items-center gap-2 text-base font-semibold text-white">
+                          {file.name}
+                          {file.uploadedAt && (
+                            <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-normal text-white/60">
+                              {new Date(file.uploadedAt).toLocaleTimeString()}
+                            </span>
+                          )}
                         </div>
-                        <div className="flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-medium text-gray-900">{file.name}</span>
-                            {file.uploadedAt && (
-                              <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
-                                📅 {new Date(file.uploadedAt).toLocaleTimeString()}
-                              </span>
-                            )}
-                            {file.status === 'error' && (
-                              <span className="text-red-600 text-sm">{file.error}</span>
-                            )}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {formatFileSize(file.size)} • {file.type}
-                            {file.callId && (
-                              <span className="ml-2 text-xs text-gray-400">
-                                ID: {file.callId.slice(0, 8)}
-                              </span>
-                            )}
-                          </div>
-                        </div>
+                        <p className="text-sm text-white/60">
+                          {formatFileSize(file.size)} · {file.type}
+                          {file.callId && (
+                            <span className="ml-2 text-xs text-white/50">
+                              ID: {file.callId.slice(0, 8)}
+                            </span>
+                          )}
+                        </p>
+                        {file.status === 'error' && (
+                          <p className="text-sm text-rose-300">{file.error}</p>
+                        )}
                       </div>
-
-                      <div className="flex items-center gap-3">
-                        {/* Progress indicator for uploading */}
+                      <div className="flex flex-col gap-2 text-sm text-white/70 sm:items-end">
                         {file.status === 'uploading' && (
-                          <div className="w-32">
-                            <div className="bg-gray-200 rounded-full h-2">
+                          <div className="w-48">
+                            <div className="h-2 rounded-full bg-white/10">
                               <div
-                                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 transition-[width]"
                                 style={{ width: `${file.progress}%` }}
-                              ></div>
+                              />
                             </div>
-                            <div className="text-xs text-gray-500 mt-1 text-center">
-                              {file.progress}%
-                            </div>
+                            <p className="mt-1 text-right text-xs text-white/60">{file.progress}%</p>
                           </div>
                         )}
-
-
-                        {/* Status badge */}
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          file.status === 'completed' ? 'bg-green-100 text-green-800' :
-                          file.status === 'uploading' ? 'bg-blue-100 text-blue-800' :
-                          file.status === 'processing' ? 'bg-yellow-100 text-yellow-800' :
-                          file.status === 'error' ? 'bg-red-100 text-red-800' :
-                          'bg-gray-100 text-gray-800'
-                        }`}>
-                          {file.status === 'completed' ? '✅ Completed' : 
-                           file.status === 'uploading' ? `🔼 Uploading ${file.progress}%` : 
-                           file.status === 'processing' ? (
-                             <>
-                               <span className="inline-block w-3 h-3 rounded-full border-2 border-yellow-600 border-t-transparent animate-spin"></span>
-                               {processingLabel}
-                             </>
-                           ) : 
-                           file.status === 'error' ? '❌ Error' : '⏳ Pending'}
+                        <span className="inline-flex items-center gap-2 rounded-full border border-white/15 px-3 py-1 text-xs uppercase tracking-wide text-white">
+                          {file.status === 'completed'
+                            ? '✅ Completed'
+                            : file.status === 'uploading'
+                              ? 'Uploading'
+                              : file.status === 'processing'
+                                ? processingLabel
+                                : file.status === 'error'
+                                  ? 'Error'
+                                  : 'Pending'}
                         </span>
-
-                        {/* Action buttons */}
-                        {file.status === 'processing' && (
-                          <button
-                            onClick={() => cancelFileProcessing(file.id)}
-                            className="text-red-600 hover:text-red-800 text-sm px-3 py-1.5 rounded border border-red-300 hover:bg-red-50 transition-colors"
-                            title="Cancel processing"
-                          >
-                            ⏹️ Cancel
-                          </button>
-                        )}
-
-                        {file.status !== 'uploading' && file.status !== 'processing' && (
-                          <button
-                            onClick={() => removeFile(file.id)}
-                            className="text-red-600 hover:text-red-800"
-                            title="Remove file"
-                          >
-                            🗑️
-                          </button>
-                        )}
+                        <div className="flex gap-2">
+                          {file.status === 'processing' && (
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              className="!px-3 !py-1 text-xs"
+                              onClick={() => cancelFileProcessing(file.id)}
+                            >
+                              Cancel
+                            </Button>
+                          )}
+                          {file.status !== 'uploading' && file.status !== 'processing' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="!px-3 !py-1 text-xs text-white/70"
+                              onClick={() => removeFile(file.id)}
+                            >
+                              Remove
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Live transcription panel */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">📝</span>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">Live Transcription</h3>
-                <p className="text-sm text-gray-500">Latest transcript will appear here after recording or import completes.</p>
-              </div>
-            </div>
-            
-            {/* Action buttons - only show when transcript exists */}
-            {liveTranscript && (
-              <div className="flex items-center gap-2 relative">
-                {/* Formatting toggle */}
-                <button
-                  onClick={() => setShowFormattedText(!showFormattedText)}
-                  className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
-                    showFormattedText 
-                      ? 'bg-blue-100 text-blue-700 border-blue-300' 
-                      : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'
-                  }`}
-                  title={showFormattedText ? 'Switch to raw text' : 'Switch to formatted text'}
-                >
-                  {showFormattedText ? '📝 Formatted' : '📄 Raw'}
-                </button>
-                
-                <button
-                  onClick={copyTranscript}
-                  className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 transition-colors"
-                  title="Copy transcript"
-                >
-                  <img src={`${import.meta.env.BASE_URL}copy_icon.png`} alt="Copy" className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={downloadTranscript}
-                  className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 transition-colors"
-                  title="Download transcript"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </button>
-                {copied && (
-                  <div className="absolute -bottom-8 right-0 px-2 py-1 rounded bg-green-100 text-green-700 text-xs shadow">
-                    Copied!
                   </div>
-                )}
+                ))}
               </div>
-            )}
-          </div>
-          <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-6 py-10 text-center">
-            {liveLoading ? (
-              <p className="text-sm text-gray-500">Generating transcript…</p>
-            ) : liveError ? (
-              <p className="text-sm text-red-500">{liveError}</p>
-            ) : liveTranscript ? (
-              <div className="space-y-2">
-                <div className="text-xs uppercase tracking-wide text-gray-400">{liveSource === 'mic' ? 'Live Mic' : 'Import'} {liveCallId ? `• ${liveCallId.slice(0, 8)}` : ''}</div>
-                <p className="text-sm text-gray-700 whitespace-pre-wrap text-left">
-                  {showFormattedText ? formatTranscriptText(liveTranscript) : liveTranscript}
-                </p>
-              </div>
-            ) : (
-              <p className="text-sm text-gray-500">No transcript available yet. Capture audio or upload a file to see the transcription.</p>
-            )}
-          </div>
-        </div>
-
-        {/* Guidelines */}
-        <div className="bg-[#e9f0ff] border border-blue-100 rounded-2xl p-6 md:p-8 space-y-6 lg:col-span-2">
-          <div className="flex items-center gap-2 text-blue-600 text-lg font-semibold">
-            📘 Capture Guidelines
-          </div>
-          <div className="grid gap-4 md:grid-cols-2 text-sm text-blue-800">
-            <div className="flex items-start gap-3">
-              <span className="text-xl">🗂️</span>
-              <p><strong>Supported formats:</strong> WAV, MP3, M4A, FLAC</p>
             </div>
-            <div className="flex items-start gap-3">
-              <span className="text-xl">💾</span>
-              <p><strong>Maximum file size:</strong> 10GB</p>
-            </div>
-            <div className="flex items-start gap-3">
-              <span className="text-xl">⚡</span>
-              <p>Files are automatically processed after capture</p>
-            </div>
-            <div className="flex items-start gap-3">
-              <span className="text-xl">👀</span>
-              <p>Check the Transcripts page to view processing status</p>
-            </div>
-            <div className="flex items-start gap-3">
-              <span className="text-xl">⏱️</span>
-              <p>Processing time depends on file length and complexity</p>
-            </div>
-            <div className="flex items-start gap-3">
-              <span className="text-xl">📈</span>
-              <p>Higher quality audio produces more accurate transcripts</p>
-            </div>
-          </div>
-        </div>
-
-
+          )}
+        </Card>
       </div>
+
+      <Card
+        title="Live Transcription"
+        subtitle="Latest output from live capture or uploads."
+        icon="📝"
+      >
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-white/70">
+            Latest transcript appears instantly after capture or upload completion.
+          </p>
+          {liveTranscript && (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowFormattedText(!showFormattedText)}
+              >
+                {showFormattedText ? 'Formatted' : 'Raw'}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={copyTranscript}>
+                Copy
+              </Button>
+              <Button variant="ghost" size="sm" onClick={downloadTranscript}>
+                Download
+              </Button>
+              {copied && (
+                <span className="rounded-full border border-emerald-300/30 px-3 py-1 text-xs text-emerald-200">
+                  Copied!
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="mt-6 rounded-2xl border border-dashed border-white/15 bg-white/5 px-6 py-10 text-center">
+          {liveLoading ? (
+            <p className="text-sm text-white/60">Generating transcript…</p>
+          ) : liveError ? (
+            <p className="text-sm text-rose-300">{liveError}</p>
+          ) : liveTranscript ? (
+            <div className="space-y-2 text-left">
+              <div className="text-xs uppercase tracking-wide text-white/50">
+                {liveSource === 'mic' ? 'Live Mic' : 'Import'}
+                {liveCallId ? ` • ${liveCallId.slice(0, 8)}` : ''}
+              </div>
+              <p className="text-sm text-white/80 whitespace-pre-wrap">
+                {showFormattedText ? formatTranscriptText(liveTranscript) : liveTranscript}
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-white/60">No transcript available yet. Capture audio or upload a file.</p>
+          )}
+        </div>
+      </Card>
+
+      <Card
+        title="Capture Guidelines"
+        subtitle="Keep latency low and accuracy high."
+        icon="📘"
+      >
+        <div className="grid gap-4 md:grid-cols-2 text-sm text-white/70">
+          {[
+            { icon: '🗂️', text: 'Supported formats: WAV, MP3, M4A, FLAC' },
+            { icon: '💾', text: 'Maximum file size: 10GB' },
+            { icon: '⚡', text: 'Uploads auto-start processing once complete' },
+            { icon: '👀', text: 'Transcripts tab shows status updates' },
+            { icon: '⏱️', text: 'Processing time depends on duration & complexity' },
+            { icon: '📈', text: 'Higher quality audio produces more accurate transcripts' },
+          ].map(({ icon, text }) => (
+            <div key={text} className="flex items-start gap-3 rounded-2xl border border-white/5 bg-white/5 p-4">
+              <span className="text-xl">{icon}</span>
+              <p>{text}</p>
+            </div>
+          ))}
+        </div>
+      </Card>
     </div>
   )
 }
@@ -1017,12 +976,10 @@ const processingStages = ['Processing audio…', 'Transcribing speech…', 'Runn
 export default Capture
 
 function LiveMicPanel({
-  onNavigate,
   onTranscriptStart,
   onTranscriptComplete,
   onTranscriptError,
 }: {
-  onNavigate?: (page: 'dashboard' | 'capture' | 'transcripts') => void
   onTranscriptStart?: () => void
   onTranscriptComplete?: (payload: { text: string; callId: string | null }) => void
   onTranscriptError?: (message: string) => void
@@ -1039,6 +996,18 @@ function LiveMicPanel({
   // Batch-only live mic (no SSE): we rely on parent to show transcript
   const [processingFinal, setProcessingFinal] = useState(false)
   const [callId, setCallId] = useState<string | null>(null)
+  const [levels, setLevels] = useState<number[]>(() => Array.from({ length: 12 }, () => 0.2))
+
+  useEffect(() => {
+    if (!recording) {
+      setLevels(prev => prev.map(() => 0.2))
+      return
+    }
+    const id = window.setInterval(() => {
+      setLevels(prev => prev.map(() => 0.2 + Math.random() * 0.8))
+    }, 180)
+    return () => window.clearInterval(id)
+  }, [recording])
 
   const start = useCallback(async () => {
     try {
@@ -1193,26 +1162,51 @@ function LiveMicPanel({
   }, [sessionId, onTranscriptStart, onTranscriptComplete, onTranscriptError])
 
   return (
-    <div>
-      <div className="flex items-center gap-3 mb-2">
-        {!recording ? (
-          <button onClick={start} className="px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700">● Record</button>
-        ) : (
-          <button onClick={stop} className="px-3 py-1.5 bg-gray-700 text-white rounded hover:bg-gray-800">■ Stop</button>
-        )}
-        {sessionId && (
-          <span className="text-xs text-gray-600">Session: {sessionId.slice(0,8)}</span>
-        )}
-      </div>
-      {error && <div className="text-xs text-red-700 mb-2">{error}</div>}
-      <div className="text-sm text-gray-800 whitespace-pre-wrap min-h-[2rem]">
-        {recording
-          ? 'Listening…'
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-sm text-white/70">
+          {recording
+            ? 'Listening for every detail...'
       : processingFinal
         ? 'Processing final transcript…'
-        : callId
-          ? 'Transcript ready — see Live Transcript panel or Transcripts tab.'
-          : (sessionId ? 'No transcript available' : 'Press Record to start')}
+              : callId
+                ? 'Transcript ready — see Live Transcription or Transcripts tab.'
+                : 'Press record to capture high-fidelity audio.'}
+        </div>
+        {sessionId && (
+          <span className="rounded-full border border-white/20 px-3 py-1 text-xs text-white/70">
+            Session · {sessionId.slice(0, 8)}
+          </span>
+        )}
+      </div>
+      {error && <div className="rounded-xl border border-rose-400/30 bg-rose-500/10 p-3 text-xs text-rose-100">{error}</div>}
+      <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
+        <button
+          onClick={recording ? stop : start}
+          className={`relative flex h-28 w-28 items-center justify-center rounded-full border-2 border-pink-500/50 bg-gradient-to-br from-pink-500 via-red-500 to-orange-500 text-white shadow-glow-pink transition-transform hover:scale-105 ${
+            recording ? 'animate-mic-ripple' : ''
+          }`}
+        >
+          <span className="text-lg font-semibold tracking-wide uppercase">
+            {recording ? 'Stop' : 'Rec'}
+          </span>
+          <span
+            className="absolute inset-3 rounded-full bg-slate-950/60"
+            aria-hidden
+          />
+          <span className="relative z-10 text-2xl">{recording ? '■' : '●'}</span>
+        </button>
+        <div className="flex-1">
+          <div className="flex h-24 items-end justify-between gap-1">
+            {levels.map((value, idx) => (
+              <span
+                key={`level-${idx}`}
+                className="w-2 rounded-full bg-gradient-to-b from-cyan-400 via-blue-500 to-purple-500"
+                style={{ height: `${Math.max(20, value * 100)}%`, opacity: recording ? 1 : 0.35 }}
+              />
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   )

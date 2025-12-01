@@ -1,31 +1,108 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Custom styles */
+:root {
+  font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  color: #F8FAFC;
+  background-color: #030712;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --glass-border: rgba(226, 232, 240, 0.12);
+  --glass-bg: rgba(15, 23, 42, 0.7);
+  --grid-line: rgba(255, 255, 255, 0.04);
+}
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+  background-color: #030712;
+  background-image: radial-gradient(circle at 20% 20%, rgba(91, 124, 255, 0.25), transparent 45%),
+    radial-gradient(circle at 80% 0%, rgba(168, 85, 247, 0.2), transparent 45%),
+    radial-gradient(circle at 50% 80%, rgba(50, 245, 255, 0.18), transparent 35%);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+@layer base {
+  ::selection {
+    background: rgba(50, 245, 255, 0.3);
+    color: #F8FAFC;
+  }
 }
 
 @layer components {
-  .btn-primary {
-    @apply bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors;
+  .glass-surface {
+    backdrop-filter: blur(24px);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 15px 45px rgba(3, 7, 18, 0.65);
   }
-  
-  .btn-secondary {
-    @apply bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 transition-colors;
+
+  .neon-border {
+    position: relative;
   }
-  
-  .card {
-    @apply bg-white rounded-lg shadow-md p-6;
+
+  .neon-border::after {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(120deg, #32F5FF, #5B7CFF, #A855F7, #32F5FF);
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    animation: gradientFlow 12s ease infinite;
+    pointer-events: none;
   }
-  
-  .input-field {
-    @apply w-full px-3 py-2 border border-gray-300 rounded-md;
+
+  .gradient-heading {
+    background: linear-gradient(120deg, #32F5FF, #5B7CFF, #A855F7);
+    -webkit-background-clip: text;
+    color: transparent;
+  }
+
+  .blob {
+    filter: blur(50px);
+    opacity: 0.4;
+    mix-blend-mode: screen;
+  }
+}
+
+@layer utilities {
+  .bg-grid {
+    background-image:
+      linear-gradient(transparent 95%, var(--grid-line) 95%),
+      linear-gradient(90deg, transparent 95%, var(--grid-line) 95%);
+    background-size: 40px 40px;
+  }
+}
+
+@keyframes gradientFlow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

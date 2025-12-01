@@ -1,16 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Logo, Navigation } from './index'
-
-interface UpdateManifest {
-  latestVersion: string
-  downloadUrl: string
-  releaseNotes?: string[]
-  [key: string]: any
-}
+import type { AppTab, UpdateManifest } from '../../types'
 
 interface HeaderProps {
-  activePage: 'dashboard' | 'capture' | 'transcripts' | 'analytics' | 'settings'
-  onPageChange: (page: 'dashboard' | 'capture' | 'transcripts' | 'analytics' | 'settings') => void
+  activePage: AppTab
+  onPageChange: (page: AppTab) => void
   onMenuToggle: () => void
   updateInfo?: UpdateManifest | null
   dismissedVersion?: string | null
@@ -85,40 +79,37 @@ const Header: React.FC<HeaderProps> = ({
   }
 
   return (
-    <header className="bg-white shadow-sm border-b border-gray-200">
+    <header className="relative z-10 px-4 pt-6 pb-4 lg:px-8">
       {showUpdateBanner && (
-        <div className="bg-blue-50 border-b border-blue-200">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-sm text-blue-800">
-            <div className="flex flex-col gap-1">
-              <div>
-                <strong>Update available:</strong> TranscriptAI {updateInfo.latestVersion}
-              </div>
-              {Array.isArray(updateInfo.releaseNotes) && updateInfo.releaseNotes.length > 0 && (
-                <ul className="list-disc list-inside text-blue-700">
-                  {updateInfo.releaseNotes.slice(0, 3).map((note: string, idx: number) => (
+        <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-cyan-100 backdrop-blur-xl">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="font-semibold text-white">Update available · v{updateInfo.latestVersion}</p>
+              {Array.isArray(updateInfo.releaseNotes) && (
+                <ul className="mt-1 list-disc space-y-1 pl-5 text-slate-200/80">
+                  {updateInfo.releaseNotes.slice(0, 2).map((note: string, idx: number) => (
                     <li key={`release-note-${idx}`}>{note}</li>
                   ))}
-                  {updateInfo.releaseNotes.length > 3 && (
-                    <li>…</li>
-                  )}
                 </ul>
               )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap gap-3">
               <button
                 type="button"
                 onClick={handleDownloadClick}
-                className={`px-3 py-1 rounded-md text-white transition ${isLaunchingDownload ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
+                className={`rounded-full px-4 py-2 text-sm font-medium shadow-glow ${
+                  isLaunchingDownload
+                    ? 'bg-white/20 text-white cursor-not-allowed'
+                    : 'bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-900 hover:from-cyan-300 hover:to-blue-400'
+                }`}
                 disabled={isLaunchingDownload}
-                aria-busy={isLaunchingDownload}
-                aria-live="polite"
               >
-                {isLaunchingDownload ? 'Opening download...' : 'Download'}
+                {isLaunchingDownload ? 'Opening download…' : 'Download update'}
               </button>
               <button
                 type="button"
                 onClick={() => onDismissUpdate?.(updateInfo.latestVersion)}
-                className="px-3 py-1 rounded-md text-blue-700 hover:text-blue-900"
+                className="rounded-full border border-white/30 px-4 py-2 text-sm text-white/80 hover:text-white"
               >
                 Remind me later
               </button>
@@ -126,48 +117,27 @@ const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
       )}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
-          {/* Left side - Logo and Navigation */}
-          <div className="flex items-center">
-            {/* Mobile menu button */}
-            <button
-              onClick={onMenuToggle}
-              className="lg:hidden p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
-            >
-              <span className="sr-only">Open sidebar</span>
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-            
-            {/* Logo */}
-            <div className="flex-shrink-0 flex items-center">
-              <Logo size="md" onClick={() => onPageChange('dashboard')} />
+      <div className="glass-surface relative rounded-3xl border border-white/10 px-5 py-4 shadow-glow lg:px-8">
+        <div className="flex flex-col gap-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={onMenuToggle}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white shadow-glow lg:hidden"
+              >
+                <span className="sr-only">Open navigation</span>
+                <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none">
+                  <path stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" d="M5 7h14M5 12h14M5 17h10" />
+                </svg>
+              </button>
+              <Logo size="lg" onClick={() => onPageChange('capture')} />
             </div>
-            
-            {/* Navigation - hidden on mobile */}
-            <div className="hidden lg:ml-8 lg:flex lg:items-center">
-              <Navigation activePage={activePage} onPageChange={onPageChange} />
+            <div className="hidden items-center gap-3 text-xs font-medium uppercase tracking-[0.2em] text-slate-300 md:flex">
+              <div className="h-2 w-2 animate-pulse rounded-full bg-emerald-400 shadow-glow" />
+              <span>Live · System Online</span>
             </div>
           </div>
-          
-          {/* Right side - User info and actions */}
-          <div className="flex items-center space-x-4">
-            {/* Status indicator */}
-            <div className="flex items-center space-x-2 text-sm text-gray-500">
-              <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-              <span>System Online</span>
-            </div>
-            
-            {/* User menu placeholder */}
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                <span className="text-white text-sm font-medium">U</span>
-              </div>
-              <span className="hidden sm:block text-sm font-medium text-gray-700">User</span>
-            </div>
-          </div>
+          <Navigation activePage={activePage} onPageChange={onPageChange} />
         </div>
       </div>
     </header>

@@ -4,11 +4,16 @@ import { createPortal } from 'react-dom'
 import { useDictationController } from './dictationController'
 import { DictationPermissionPrompt } from './permissionPrompt'
 
+interface DictationBridge {
+  respondPermission?: (payload: { requestId: number; granted: boolean }) => Promise<unknown> | void
+  cancelActivePress?: (payload: { reason: string }) => Promise<unknown> | void
+}
+
 function respondPermission(requestId: number | null, granted: boolean) {
   if (requestId === null) {
     return
   }
-  const bridge = (window as unknown as { transcriptaiDictation?: any })?.transcriptaiDictation
+  const bridge = (window as typeof window & { transcriptaiDictation?: DictationBridge })?.transcriptaiDictation
   if (bridge && typeof bridge.respondPermission === 'function') {
     void bridge.respondPermission({ requestId, granted }).catch((error: unknown) => {
       console.warn('[DictationOverlay] respondPermission failed', error)
@@ -17,7 +22,7 @@ function respondPermission(requestId: number | null, granted: boolean) {
 }
 
 function cancelActivePress(reason: string) {
-  const bridge = (window as unknown as { transcriptaiDictation?: any })?.transcriptaiDictation
+  const bridge = (window as typeof window & { transcriptaiDictation?: DictationBridge })?.transcriptaiDictation
   if (bridge && typeof bridge.cancelActivePress === 'function') {
     void bridge.cancelActivePress({ reason }).catch((error: unknown) => {
       console.warn('[DictationOverlay] cancelActivePress failed', error)
@@ -39,6 +44,8 @@ export const DictationOverlay: React.FC = () => {
     return null
   }
 
+  const audioBarDelays = useMemo(() => Array.from({ length: 12 }, (_, idx) => idx * 0.08), [])
+
   const content = useMemo(() => {
     if (state.status === 'permission' && state.permission) {
       return (
@@ -56,24 +63,49 @@ export const DictationOverlay: React.FC = () => {
 
     if (state.status === 'error' && state.error) {
       return (
-        <div className="w-full max-w-sm rounded-lg bg-red-700/90 p-5 text-white shadow-lg">
+        <div className="glass-surface w-full max-w-sm rounded-3xl border border-rose-500/40 bg-rose-500/10 p-6 text-white shadow-glow-pink">
           <h2 className="text-lg font-semibold">Dictation error</h2>
-          <p className="mt-2 text-sm text-red-50">{state.error}</p>
+          <p className="mt-2 text-sm text-white/70">{state.error}</p>
+        </div>
+      )
+    }
+
+    if (state.status === 'recording' || state.status === 'processing') {
+      const isRecording = state.status === 'recording'
+      const tone = isRecording
+        ? 'from-pink-500 via-red-500 to-orange-500'
+        : 'from-cyan-400 via-blue-500 to-purple-500'
+      const barColor = isRecording ? 'bg-pink-300' : 'bg-cyan-300'
+      return (
+        <div className="glass-surface w-full max-w-sm rounded-3xl border border-white/15 bg-white/5 p-6 text-white shadow-glow">
+          <div className={`mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br ${tone} ${isRecording ? 'animate-pulse' : ''}`}>
+            <span className="text-3xl">🎙️</span>
+          </div>
+          <p className="text-center text-sm text-white/80">{statusMessages[state.status]}</p>
+          <div className="mt-6 flex items-end justify-between gap-1">
+            {audioBarDelays.map(delay => (
+              <span
+                key={`bar-${delay}`}
+                className={`h-12 w-1 rounded-full ${barColor} animate-audio-bars`}
+                style={{ animationDelay: `${delay}s` }}
+              />
+            ))}
+          </div>
         </div>
       )
     }
 
     return null
-  }, [state])
+  }, [audioBarDelays, state])
 
   const notificationStyles: Record<string, string> = {
-    info: 'border-blue-200 bg-blue-50 text-blue-800',
-    warning: 'border-amber-200 bg-amber-50 text-amber-800',
-    error: 'border-red-200 bg-red-50 text-red-700',
+    info: 'border-cyan-300/30 bg-white/10 text-white',
+    warning: 'border-amber-300/40 bg-amber-500/10 text-amber-100',
+    error: 'border-rose-400/40 bg-rose-500/10 text-rose-100',
   }
 
   const overlayNode = content ? (
-    <div className="pointer-events-none fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 p-4">
+    <div className="pointer-events-none fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md">
       <div className="pointer-events-auto" role="status" aria-live="assertive">
         {content}
       </div>
@@ -87,12 +119,12 @@ export const DictationOverlay: React.FC = () => {
         return (
           <div
             key={notification.id}
-            className={`pointer-events-auto rounded-lg border p-4 shadow-lg ${style}`}
+            className={`pointer-events-auto rounded-2xl border p-4 shadow-lg backdrop-blur-xl ${style}`}
           >
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-semibold">{notification.title}</p>
-                <p className="mt-1 text-sm">{notification.message}</p>
+                <p className="mt-1 text-sm text-white/80">{notification.message}</p>
               </div>
               <button
                 type="button"
@@ -110,23 +142,23 @@ export const DictationOverlay: React.FC = () => {
   ) : null
 
   const safeModeNode = state.safeMode.engaged ? (
-    <div className="fixed bottom-4 left-1/2 z-[1100] w-[min(90%,32rem)] -translate-x-1/2 rounded-lg border border-amber-300 bg-amber-50 p-4 shadow-xl">
+    <div className="fixed bottom-4 left-1/2 z-[1100] w-[min(90%,32rem)] -translate-x-1/2 rounded-3xl border border-amber-300/40 bg-amber-500/10 p-5 text-amber-100 shadow-glow">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-sm font-semibold text-amber-900">Dictation paused for safety</p>
-          <p className="mt-1 text-sm text-amber-800">
+          <p className="text-sm font-semibold text-white">Dictation paused for safety</p>
+          <p className="mt-1 text-sm text-amber-100">
             We detected repeated failures ({state.safeMode.fatalErrorCount}). Resolve the issue, then re-enable dictation.
             {state.safeMode.detail && (
-              <span className="block">Recent error: {state.safeMode.detail}</span>
+              <span className="block text-amber-100/80">Recent error: {state.safeMode.detail}</span>
             )}
             {state.safeMode.lastErrorId && (
-              <span className="block text-xs text-amber-700">Reference ID: {state.safeMode.lastErrorId}</span>
+              <span className="block text-xs text-amber-200/80">Reference ID: {state.safeMode.lastErrorId}</span>
             )}
           </p>
         </div>
         <button
           type="button"
-          className="inline-flex items-center justify-center rounded-md border border-amber-400 bg-white px-3 py-2 text-sm font-medium text-amber-800 shadow-sm transition hover:bg-amber-100"
+          className="inline-flex items-center justify-center rounded-full border border-amber-400/60 bg-transparent px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-400/10"
           onClick={() => { void state.exitSafeMode() }}
         >
           Re-enable dictation
