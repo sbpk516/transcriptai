@@ -14,54 +14,35 @@ mkdir -p "$OUT"
 # Use start.py as entry or a small launcher that imports uvicorn app
 cd "$ROOT/backend"
 
-# PyInstaller one-file build using desktop entrypoint (bundle deps)
-pyinstaller -y --clean \
-  --onefile \
-  --name transcriptai-backend \
-  --add-data "app:app" \
-  --collect-all fastapi \
-  --collect-all starlette \
-  --collect-all pydantic \
-  --collect-all aiofiles \
-  --collect-all anyio \
-  --collect-all sniffio \
-  --collect-all jinja2 \
-  --collect-all whisper \
-  --collect-all torch \
-  --collect-all numpy \
-  --collect-all tqdm \
-  --collect-all ffmpeg \
-  --collect-all pydub \
-  --collect-all soundfile \
-  --collect-all nltk \
-  --collect-all vaderSentiment \
-  --hidden-import fastapi \
-  --hidden-import fastapi.middleware.cors \
-  --hidden-import fastapi.applications \
-  --hidden-import fastapi.routing \
-  --hidden-import starlette.middleware.cors \
-  --hidden-import multipart \
-  --hidden-import uvicorn \
-  --hidden-import h11 \
-  --hidden-import sqlalchemy \
-  --hidden-import pydantic_settings \
-  --hidden-import whisper \
-  --hidden-import torch \
-  --hidden-import numpy \
-  --hidden-import tqdm \
-  --hidden-import pydub \
-  --hidden-import soundfile \
-  --hidden-import nltk \
-  --hidden-import vaderSentiment \
-  --hidden-import vaderSentiment.vaderSentiment \
-  --hidden-import ffmpeg \
-  desktop_entry.py
+# Default: always bundle PyTorch/Whisper so PyTorch transcription is available.
+export TRANSCRIPTAI_BUNDLE_TORCH="${TRANSCRIPTAI_BUNDLE_TORCH:-1}"
+echo "TRANSCRIPTAI_BUNDLE_TORCH=${TRANSCRIPTAI_BUNDLE_TORCH} (set to 0 to skip bundling if you explicitly want MLX-only)"
 
-# Move artifact
-if [[ -f dist/transcriptai-backend ]]; then
+# PyInstaller one-dir build using desktop entrypoint (bundle deps)
+# Using --onedir instead of --onefile to enable extraction caching
+# This eliminates the 40-second extraction delay on subsequent launches
+# Using spec file for better control over PyTorch/Whisper bundling
+# Note: When using a .spec file, don't pass conflicting command-line options
+# The spec file contains all the configuration (collect-all, hidden-imports, etc.)
+pyinstaller -y --clean transcriptai-backend.spec
+
+# Move artifact (--onedir creates a directory)
+if [[ -d dist/transcriptai-backend ]]; then
+  # Remove old directory OR file if exists
+  [[ -d "$OUT/transcriptai-backend" ]] && rm -rf "$OUT/transcriptai-backend"
+  [[ -f "$OUT/transcriptai-backend" ]] && rm -f "$OUT/transcriptai-backend"
   mv dist/transcriptai-backend "$OUT/"
+  echo "✅ Backend directory built: $OUT/transcriptai-backend"
+  echo "   Executable: $OUT/transcriptai-backend/transcriptai-backend"
+elif [[ -f dist/transcriptai-backend ]]; then
+  # Fallback: single file (--onefile mode)
+  [[ -f "$OUT/transcriptai-backend" ]] && rm -f "$OUT/transcriptai-backend"
+  mv dist/transcriptai-backend "$OUT/"
+  echo "✅ Backend binary built: $OUT/transcriptai-backend"
 elif [[ -f dist/transcriptai-backend.exe ]]; then
+  [[ -f "$OUT/transcriptai-backend.exe" ]] && rm -f "$OUT/transcriptai-backend.exe"
   mv dist/transcriptai-backend.exe "$OUT/"
+  echo "✅ Backend binary built: $OUT/transcriptai-backend.exe"
 fi
 
-echo "Done. Place the binary under backend/bin before packaging the desktop app."
+echo "Done. Place the backend (directory or binary) under backend/bin before packaging the desktop app."

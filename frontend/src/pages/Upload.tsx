@@ -95,9 +95,46 @@ const Capture: React.FC = () => {
     })
   }, [saveFilesToStorage])
 
+  /**
+   * Check speech model status by polling the backend /health endpoint.
+   * 
+   * BREAKDOWN OF "CHECKING SPEECH MODEL STATUS":
+   * 
+   * 1. Frontend polls /health endpoint every 5 seconds
+   * 2. Backend /health endpoint checks whisper_processor.get_status()
+   * 3. get_status() returns "ready" if _model_loaded flag is True
+   * 4. Model loading (_load_model) just stores model_id string (~0.001s)
+   * 5. Actual model weights load lazily on first transcription call
+   * 
+   * TIMING BREAKDOWN:
+   * - Model loading: ~0.001 seconds (just stores model_id)
+   * - Backend startup: ~82-86 seconds (Python initialization)
+   * - Health check execution: ~1-5ms per request
+   * - Total delay: Backend startup time, not model loading time
+   * 
+   * WHY NO IMPROVEMENT:
+   * - PyInstaller cache eliminates extraction delay (~40s)
+   * - But Python initialization (~40-45s) happens every launch
+   * - Model status becomes "ready" immediately, but backend takes 80+s to start
+   */
   const refreshModelStatus = useCallback(async (): Promise<'ready' | 'loading' | 'not_loaded' | 'unknown'> => {
+    const modelStatusStartTime = performance.now()
+    const modelStatusStartTimestamp = new Date().toISOString()
+    console.log('[MODEL_STATUS] phase=health_check_start timestamp=' + modelStatusStartTimestamp)
+    
     try {
+      const requestStartTime = performance.now()
+      const requestStartTimestamp = new Date().toISOString()
+      console.log('[MODEL_STATUS] phase=api_request_start timestamp=' + requestStartTimestamp)
+      
       const response = await apiClient.get('/health')
+      
+      const responseReceivedTime = performance.now()
+      const responseReceivedTimestamp = new Date().toISOString()
+      const requestElapsed = responseReceivedTime - requestStartTime
+      console.log('[MODEL_STATUS] phase=api_response_received timestamp=' + responseReceivedTimestamp + ' elapsed=' + requestElapsed.toFixed(2) + 'ms')
+      
+      const parseStartTime = performance.now()
       const models = response.data?.models ?? {}
       const whisperStatus = models.whisper?.status as string | undefined
       const nlpStatus = models.nlp?.status as string | undefined
@@ -111,7 +148,10 @@ const Capture: React.FC = () => {
       } else if (statuses.some(status => status === 'not_loaded')) {
         nextStatus = 'not_loaded'
       }
+      const parseElapsed = performance.now() - parseStartTime
+      console.log('[MODEL_STATUS] phase=parse_status elapsed=' + parseElapsed.toFixed(2) + 'ms whisper_status=' + whisperStatus + ' nlp_status=' + nlpStatus + ' final_status=' + nextStatus)
 
+      const updateStateStartTime = performance.now()
       setModelStatus(nextStatus)
 
       if (nextStatus === 'loading') {
@@ -123,9 +163,16 @@ const Capture: React.FC = () => {
       } else {
         setModelStatusMessage(null)
       }
+      const updateStateElapsed = performance.now() - updateStateStartTime
+      console.log('[MODEL_STATUS] phase=update_state elapsed=' + updateStateElapsed.toFixed(2) + 'ms')
+
+      const totalElapsed = performance.now() - modelStatusStartTime
+      console.log('[MODEL_STATUS] phase=complete total_elapsed=' + totalElapsed.toFixed(2) + 'ms')
 
       return nextStatus
     } catch (error) {
+      const totalElapsed = performance.now() - modelStatusStartTime
+      console.error('[MODEL_STATUS] phase=error elapsed=' + totalElapsed.toFixed(2) + 'ms error=', error)
       console.error('[CAPTURE] Failed to fetch health status', error)
       setModelStatus('unknown')
       setModelStatusMessage('Checking speech model status…')
@@ -152,7 +199,17 @@ const Capture: React.FC = () => {
   }, [refreshModelStatus])
 
   useEffect(() => {
-    refreshModelStatus()
+    const componentMountTime = performance.now()
+    const componentMountTimestamp = new Date().toISOString()
+    console.log('[MODEL_STATUS] phase=component_mount timestamp=' + componentMountTimestamp)
+    
+    const firstCheckStartTime = performance.now()
+    refreshModelStatus().then(() => {
+      const firstCheckElapsed = performance.now() - firstCheckStartTime
+      const mountToFirstCheckElapsed = performance.now() - componentMountTime
+      console.log('[MODEL_STATUS] phase=first_check_complete elapsed=' + firstCheckElapsed.toFixed(2) + 'ms mount_to_check=' + mountToFirstCheckElapsed.toFixed(2) + 'ms')
+    })
+    
     const intervalId = window.setInterval(() => {
       refreshModelStatus()
     }, 5000)
@@ -196,13 +253,9 @@ const Capture: React.FC = () => {
       setLiveLoading(true)
       setLiveError(null)
 
-      const ready = await ensureModelsReady()
-      if (!ready) {
-        console.log('[CAPTURE] Speech model still warming up, delaying transcript fetch')
-        setLiveLoading(false)
-        setLiveError('Speech model is still warming up. Please try again in a moment.')
-        return
-      }
+      // Don't block on model status - backend will load model on-demand
+      // Transcription will work even if model status shows "not_loaded"
+      // The model loads automatically on first transcription request
 
       const response = await apiClient.get(`/api/v1/pipeline/results/${callId}`)
       const data = response.data?.data || {}
@@ -1141,8 +1194,17 @@ function LiveMicPanel({
         const transcriptPath = res.data?.transcript_path
         const combinedPath = res.data?.combined_path
         console.log('[LIVE] stop(): response received', { ms: dt, chunksCount, concatOk, durationSec, callId: cid, transcriptPath, combinedPath, textLen: txt.length })
+        
+        // Check if transcription was successful
+        if (!txt || txt.trim().length === 0) {
+            console.warn('[LIVE] stop(): Transcription returned empty text', { callId: cid, chunksCount, concatOk })
+            const errorMsg = 'Transcription returned empty text. This may indicate silence was detected or transcription failed.'
+            onTranscriptError && onTranscriptError(errorMsg)
+            return
+        }
+        
         setCallId(cid)
-        console.log('[DEBUG] LiveMicPanel stop() - calling onTranscriptComplete with:', { textLength: txt.length, callId: cid })
+        console.log('[DEBUG] LiveMicPanel stop() - calling onTranscriptComplete with:', { textLength: txt.length, callId: cid, textPreview: txt.substring(0, 50) })
         onTranscriptComplete && onTranscriptComplete({ text: txt, callId: cid })
         console.log('[DEBUG] LiveMicPanel stop() - onTranscriptComplete completed')
         setSessionId(null)

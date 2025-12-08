@@ -21,6 +21,8 @@ BACKEND_STARTUP_TIMEOUT=30
 FRONTEND_STARTUP_TIMEOUT=30
 HEALTH_CHECK_TIMEOUT=10
 HEALTH_CHECK_RETRIES=3
+FRONTEND_HEALTH_CHECK_TIMEOUT=15
+FRONTEND_HEALTH_CHECK_RETRIES=5
 
 # Logging function
 log() {
@@ -78,9 +80,17 @@ wait_for_service() {
     return 1
 }
 
+# Helper function to get milliseconds since epoch (works on macOS and Linux)
+get_ms() {
+    # Use Python for cross-platform millisecond precision
+    python3 -c "import time; print(int(time.time() * 1000))" 2>/dev/null || echo $(($(date +%s) * 1000))
+}
+
 # Function to start backend with timeout
 start_backend() {
+    local backend_start_time=$(get_ms)
     log "Starting backend server..."
+    echo "[WEB_STARTUP] phase=backend_start_script timestamp=$(date -u +%Y-%m-%dT%H:%M:%S)"
     
     # Check if backend port is already in use
     if check_port 8001; then
@@ -90,24 +100,44 @@ start_backend() {
     fi
     
     # Start backend in background
+    local spawn_start_time=$(get_ms)
     cd backend
     source ../venv/bin/activate
-    TRANSCRIPTAI_ENABLE_TRANSCRIPTION=1 \
-    TRANSCRIPTAI_LIVE_TRANSCRIPTION=1 \
-    TRANSCRIPTAI_LIVE_MIC=1 \
-    TRANSCRIPTAI_LIVE_BATCH_ONLY=1 \
+    
+    # Create data directory if it doesn't exist
+    mkdir -p "$HOME/Library/Application Support/TranscriptAI"
+    
+    # Set environment variables for web mode (use SQLite)
+    export DATABASE_URL="sqlite:///$HOME/Library/Application Support/TranscriptAI/transcriptai.db"
+    export TRANSCRIPTAI_ENABLE_TRANSCRIPTION=1
+    export TRANSCRIPTAI_LIVE_TRANSCRIPTION=1
+    export TRANSCRIPTAI_LIVE_MIC=1
+    export TRANSCRIPTAI_LIVE_BATCH_ONLY=1
+    
     python start.py &
     local backend_pid=$!
     cd ..
+    local spawn_elapsed=$(($(get_ms) - spawn_start_time))
+    echo "[WEB_STARTUP] phase=backend_process_spawned elapsed=${spawn_elapsed}ms pid=$backend_pid"
     
     # Store PID for cleanup
     echo $backend_pid > /tmp/transcriptai_backend.pid
     
     # Wait for backend to be ready
+    local health_check_start_time=$(get_ms)
     if wait_for_service "http://127.0.0.1:8001/health" "Backend" $HEALTH_CHECK_TIMEOUT $HEALTH_CHECK_RETRIES; then
+        local health_check_end_time=$(get_ms)
+        local backend_end_time=$(get_ms)
+        local health_check_elapsed=$((health_check_end_time - health_check_start_time))
+        local total_backend_elapsed=$((backend_end_time - backend_start_time))
+        echo "[WEB_STARTUP] phase=backend_health_check_complete elapsed=${health_check_elapsed}ms"
+        echo "[WEB_STARTUP] phase=backend_ready total_elapsed=${total_backend_elapsed}ms"
         success "Backend started successfully on port 8001"
         return 0
     else
+        local backend_end_time=$(get_ms)
+        local total_backend_elapsed=$((backend_end_time - backend_start_time))
+        echo "[WEB_STARTUP] phase=backend_start_failed total_elapsed=${total_backend_elapsed}ms"
         error "Backend failed to start"
         kill $backend_pid 2>/dev/null || true
         return 1
@@ -116,7 +146,9 @@ start_backend() {
 
 # Function to start frontend with timeout
 start_frontend() {
+    local frontend_start_time=$(get_ms)
     log "Starting frontend server..."
+    echo "[WEB_STARTUP] phase=frontend_start_script timestamp=$(date -u +%Y-%m-%dT%H:%M:%S)"
     
     # Check if frontend port is already in use
     if check_port 3000; then
@@ -127,19 +159,35 @@ start_frontend() {
     fi
     
     # Start frontend in background
+    local spawn_start_time=$(get_ms)
     cd frontend
-    npm run dev &
+    # Start npm in background and redirect output to avoid blocking
+    npm run dev > /tmp/vite.log 2>&1 &
     local frontend_pid=$!
     cd ..
+    local spawn_elapsed=$(($(get_ms) - spawn_start_time))
+    echo "[WEB_STARTUP] phase=frontend_process_spawned elapsed=${spawn_elapsed}ms pid=$frontend_pid"
     
-    # Store PID for cleanup
+    # Store PID for cleanup (store both npm and vite PIDs)
     echo $frontend_pid > /tmp/transcriptai_frontend.pid
+    # Give vite a moment to start
+    sleep 1
     
-    # Wait for frontend to be ready
-    if wait_for_service "http://localhost:3000" "Frontend" $HEALTH_CHECK_TIMEOUT $HEALTH_CHECK_RETRIES; then
+    # Wait for frontend to be ready (frontend takes longer to start)
+    local health_check_start_time=$(get_ms)
+    if wait_for_service "http://localhost:3000" "Frontend" $FRONTEND_HEALTH_CHECK_TIMEOUT $FRONTEND_HEALTH_CHECK_RETRIES; then
+        local health_check_end_time=$(get_ms)
+        local frontend_end_time=$(get_ms)
+        local health_check_elapsed=$((health_check_end_time - health_check_start_time))
+        local total_frontend_elapsed=$((frontend_end_time - frontend_start_time))
+        echo "[WEB_STARTUP] phase=frontend_health_check_complete elapsed=${health_check_elapsed}ms"
+        echo "[WEB_STARTUP] phase=frontend_ready total_elapsed=${total_frontend_elapsed}ms"
         success "Frontend started successfully on port 3000"
         return 0
     else
+        local frontend_end_time=$(get_ms)
+        local total_frontend_elapsed=$((frontend_end_time - frontend_start_time))
+        echo "[WEB_STARTUP] phase=frontend_start_failed total_elapsed=${total_frontend_elapsed}ms"
         error "Frontend failed to start"
         kill $frontend_pid 2>/dev/null || true
         return 1
@@ -175,6 +223,10 @@ trap cleanup EXIT INT TERM
 
 # Main execution
 main() {
+    local script_start_time=$(get_ms)
+    local script_start_timestamp=$(date -u +%Y-%m-%dT%H:%M:%S 2>/dev/null || date +%Y-%m-%dT%H:%M:%S)
+    echo "[WEB_STARTUP] phase=script_start timestamp=$script_start_timestamp"
+    
     echo -e "${PURPLE}========================================${NC}"
     echo -e "${PURPLE}    TranscriptAI Complete Startup Script   ${NC}"
     echo -e "${PURPLE}========================================${NC}"
@@ -212,6 +264,14 @@ main() {
     
     # Phase 4: Final status
     log "Phase 4: Final status check..."
+    local script_end_time=$(get_ms)
+    # Safety check: ensure both values are integers
+    if [[ "$script_start_time" =~ ^[0-9]+$ ]] && [[ "$script_end_time" =~ ^[0-9]+$ ]]; then
+        local script_total_elapsed=$((script_end_time - script_start_time))
+        echo "[WEB_STARTUP] phase=script_complete total_elapsed=${script_total_elapsed}ms"
+    else
+        echo "[WEB_STARTUP] phase=script_complete total_elapsed=unknown"
+    fi
     echo
     success "🎉 TranscriptAI is now running!"
     echo

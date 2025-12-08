@@ -2,6 +2,10 @@
 
 # Build DMG file for TranscriptAI desktop app
 # This script ensures all prerequisites are met and builds the DMG
+#
+# Usage:
+#   bash scripts/build-dmg.sh          # Normal build
+#   bash scripts/build-dmg.sh --clean  # Clean build (removes old DMG files)
 
 set -e
 
@@ -14,8 +18,32 @@ NC='\033[0m'
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DESKTOP_DIR="$ROOT_DIR/desktop"
 
+# Flags
+CLEAN_BUILD=false
+REBUILD_BACKEND=false
+
+# Parse flags
+for arg in "$@"; do
+  case "$arg" in
+    --clean|-c)
+      CLEAN_BUILD=true
+      ;;
+    --rebuild-backend)
+      REBUILD_BACKEND=true
+      ;;
+    *)
+      ;;
+  esac
+done
+
 echo -e "${BLUE}══════════════════════════════════════════════════════════${NC}"
 echo -e "${BLUE}  TranscriptAI DMG Builder${NC}"
+if [[ "$CLEAN_BUILD" == "true" ]]; then
+    echo -e "${BLUE}  (Clean Build Mode)${NC}"
+fi
+if [[ "$REBUILD_BACKEND" == "true" ]]; then
+    echo -e "${BLUE}  (Force Backend Rebuild)${NC}"
+fi
 echo -e "${BLUE}══════════════════════════════════════════════════════════${NC}"
 echo ""
 
@@ -45,19 +73,64 @@ else
     echo -e "${GREEN}✓${NC} electron-builder found in PATH"
 fi
 
-# Check backend binary
+# Clean backend artifacts if requested
+if [[ "$CLEAN_BUILD" == "true" ]]; then
+    echo ""
+    echo -e "${YELLOW}[2] Cleaning backend artifacts...${NC}"
+    rm -rf "$ROOT_DIR/backend/bin/transcriptai-backend" "$ROOT_DIR/backend/dist" "$ROOT_DIR/backend/build" 2>/dev/null || true
+    echo -e "${GREEN}✓${NC} Backend artifacts cleaned"
+fi
+
+# Check / build backend binary
 echo ""
 echo -e "${YELLOW}[2] Checking backend binary...${NC}"
-if [ ! -f "$ROOT_DIR/backend/bin/transcriptai-backend" ]; then
-    echo -e "${YELLOW}⚠${NC} Backend binary not found. Building..."
+if [[ "$REBUILD_BACKEND" == "true" ]] || [ ! -e "$ROOT_DIR/backend/bin/transcriptai-backend" ]; then
+    echo -e "${YELLOW}⚠${NC} Building backend binary..."
     cd "$ROOT_DIR/backend"
     bash build-backend.sh
-    if [ ! -f "$ROOT_DIR/backend/bin/transcriptai-backend" ]; then
+    if [ ! -e "$ROOT_DIR/backend/bin/transcriptai-backend" ]; then
         echo -e "${RED}✗${NC} Failed to build backend binary"
         exit 1
     fi
 fi
-echo -e "${GREEN}✓${NC} Backend binary exists: backend/bin/transcriptai-backend"
+echo -e "${GREEN}✓${NC} Backend binary ready: backend/bin/transcriptai-backend"
+
+# Verify backend binary
+echo ""
+echo -e "${YELLOW}[2.5] Verifying backend bundle...${NC}"
+VERIFY_SCRIPT="$ROOT_DIR/scripts/verify-backend-bundle.py"
+BACKEND_BIN="$ROOT_DIR/backend/bin/transcriptai-backend/transcriptai-backend"
+
+# Copy verify script to backend bin dir to run it in context if needed,
+# but we actually want to run it using the BUNDLED python if possible,
+# or just run the binary and see if it imports.
+# The best way is to try to run the binary with a command that imports everything.
+# Since the binary is a compiled entry point, we can't easily 'run a script' with it.
+# Instead, we'll trust that if we can run the binary and it doesn't crash immediately, it's okay.
+# BUT, the crash happens on import. So let's try to run it with --help or similar.
+# The backend uses argparse/click or just starts uvicorn?
+# If it's just uvicorn, it might hang.
+# Let's try to run a quick python check if there's a python executable in the bundle.
+# In PyInstaller onedir, there is usually no python executable exposed directly
+# that can run arbitrary scripts unless we package it that way.
+
+# Alternative: We will try to run the backend binary in background, wait 5s, check if it's still running.
+# If it crashed (exit code != 0 or process gone), verification failed.
+
+echo "Running smoke test on backend binary..."
+TRANSCRIPTAI_MODE="test" "$BACKEND_BIN" &
+PID=$!
+sleep 5
+if ps -p $PID > /dev/null; then
+   echo -e "${GREEN}✓${NC} Backend binary started and stayed running (PID $PID)"
+   kill $PID || true
+else
+   echo -e "${RED}✗${NC} Backend binary crashed immediately!"
+   wait $PID
+   EXIT_CODE=$?
+   echo "Exit code: $EXIT_CODE"
+   exit 1
+fi
 
 # Check frontend build
 echo ""
@@ -105,6 +178,23 @@ echo ""
 
 cd "$DESKTOP_DIR"
 
+# Clean old DMG files for a fresh build (if --clean flag or always clean DMG files)
+if [[ "$CLEAN_BUILD" == "true" ]]; then
+    echo -e "${YELLOW}Cleaning all build artifacts...${NC}"
+    rm -rf "$DESKTOP_DIR/dist"/*.dmg 2>/dev/null || true
+    rm -rf "$DESKTOP_DIR/dist"/*.dmg.blockmap 2>/dev/null || true
+    rm -rf "$DESKTOP_DIR/dist"/*.yml 2>/dev/null || true
+    rm -rf "$DESKTOP_DIR/dist/mac-arm64" 2>/dev/null || true
+    echo -e "${GREEN}✓${NC} All build artifacts cleaned"
+else
+    # Always clean old DMG files (but keep mac-arm64 directory)
+    echo -e "${YELLOW}Cleaning old DMG files...${NC}"
+    rm -f "$DESKTOP_DIR/dist"/*.dmg 2>/dev/null || true
+    rm -f "$DESKTOP_DIR/dist"/*.dmg.blockmap 2>/dev/null || true
+    rm -f "$DESKTOP_DIR/dist"/*.yml 2>/dev/null || true
+    echo -e "${GREEN}✓${NC} Old DMG files cleaned"
+fi
+
 # Use npm script which runs electron-builder
 npm run dist
 
@@ -133,20 +223,3 @@ else
     echo -e "${YELLOW}Check the build output above for errors${NC}"
     exit 1
 fi
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

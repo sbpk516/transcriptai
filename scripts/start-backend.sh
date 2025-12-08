@@ -26,5 +26,11 @@ cd "$ROOT_DIR"
 source venv/bin/activate
 cd backend
 
+# Set environment variables for web mode features
+export TRANSCRIPTAI_ENABLE_TRANSCRIPTION=1
+export TRANSCRIPTAI_LIVE_MIC=1
+export TRANSCRIPTAI_LIVE_TRANSCRIPTION=1
+export TRANSCRIPTAI_LIVE_BATCH_ONLY=1
+
 # Start backend with configured port
 uvicorn app.main:app --host "$BACKEND_HOST" --port "$BACKEND_PORT" --reload

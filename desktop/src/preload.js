@@ -99,10 +99,32 @@ const backendInfoSync = (() => {
   }
 })()
 
+// Listen for backend-ready event (optional - frontend already polls)
+ipcRenderer.on('backend-ready', (_event, data) => {
+  // Frontend can listen to this event if needed, but polling is already implemented
+  console.log('[Preload] Backend ready event received', data)
+})
+
 contextBridge.exposeInMainWorld('api', {
   ping: () => 'pong',
   getBackendInfo: () => ipcRenderer.invoke('get-backend-info'),
   backend: backendInfoSync,
+  // Optional: expose backend-ready listener
+  onBackendReady: (callback) => {
+    if (typeof callback !== 'function') {
+      console.warn('[Preload] onBackendReady expects a function callback')
+      return () => {}
+    }
+    const handler = (_event, data) => {
+      try {
+        callback(data)
+      } catch (error) {
+        console.error('[Preload] backend-ready callback failed', error)
+      }
+    }
+    ipcRenderer.on('backend-ready', handler)
+    return () => ipcRenderer.removeListener('backend-ready', handler)
+  },
 })
 
 contextBridge.exposeInMainWorld('transcriptaiUpdates', {

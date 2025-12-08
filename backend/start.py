@@ -7,7 +7,16 @@ import os
 import re
 import subprocess
 import sys
+import time
+import logging
 from pathlib import Path
+
+# Set up logging for startup timing
+logging.basicConfig(
+    level=logging.INFO,
+    format='[WEB_STARTUP] %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 def get_backend_port():
     """Get backend port from config.js file"""
@@ -38,7 +47,14 @@ def get_backend_port():
 
 def main():
     """Main function to start the backend server"""
+    _WEB_STARTUP_START = time.perf_counter()
+    _WEB_STARTUP_TIMESTAMP = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime())
+    logger.info(f"phase=backend_script_start timestamp={_WEB_STARTUP_TIMESTAMP}")
+    
+    _PORT_READ_START = time.perf_counter()
     port = get_backend_port()
+    _PORT_READ_ELAPSED = (time.perf_counter() - _PORT_READ_START) * 1000
+    logger.info(f"phase=port_config_read elapsed={_PORT_READ_ELAPSED:.3f}ms port={port}")
     
     print(f"🚀 Starting TranscriptAI backend on port {port}")
     print(f"📍 Health check: http://127.0.0.1:{port}/health")
@@ -46,6 +62,7 @@ def main():
     print("-" * 50)
     
     # Start uvicorn server
+    _UVICORN_SPAWN_START = time.perf_counter()
     cmd = [
         sys.executable, "-m", "uvicorn", 
         "app.main:app", 
@@ -53,12 +70,15 @@ def main():
         "--port", port,
         "--reload"
     ]
+    logger.info(f"phase=uvicorn_spawn_start timestamp={time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime())}")
     
     try:
         subprocess.run(cmd)
     except KeyboardInterrupt:
         print("\n🛑 Backend server stopped")
     except Exception as e:
+        _WEB_STARTUP_ERROR_ELAPSED = (time.perf_counter() - _WEB_STARTUP_START) * 1000
+        logger.error(f"phase=backend_script_error elapsed={_WEB_STARTUP_ERROR_ELAPSED:.3f}ms error={str(e)}")
         print(f"❌ Error starting server: {e}")
         sys.exit(1)
 

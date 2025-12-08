@@ -17,6 +17,10 @@ try:
     import torch  # type: ignore
     _WHISPER_AVAILABLE = True
 except Exception as _e:  # Whisper/Torch optional
+    # Log the actual error for debugging (especially important in packaged apps)
+    import logging
+    _logger = logging.getLogger('transcriptai.whisper_processor')
+    _logger.warning(f"Failed to import Whisper/Torch: {_e}", exc_info=True)
     whisper = None  # type: ignore
     torch = None  # type: ignore
     _WHISPER_AVAILABLE = False
@@ -29,6 +33,16 @@ from .config import settings
 from .debug_utils import debug_helper
 from .audio_processor import audio_processor
 from .logging_config import log_function_call, PerformanceMonitor
+
+# Initialize startup logger for timing logs
+startup_logger = logging.getLogger("transcriptai.startup")
+if not startup_logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(logging.Formatter('%(message)s'))
+    startup_logger.addHandler(handler)
+    startup_logger.setLevel(logging.INFO)
+    startup_logger.propagate = False
 
 # Configure logger for this module
 logger = logging.getLogger('transcriptai.whisper_processor')
@@ -47,7 +61,13 @@ def _whisper_cache_root() -> Path:
     return base / "whisper"
 
 def _transcription_enabled() -> bool:
-    return os.getenv("TRANSCRIPTAI_ENABLE_TRANSCRIPTION", "0") == "1"
+    """Check if transcription is enabled. Defaults to enabled (1) for normal operation."""
+    enabled = os.getenv("TRANSCRIPTAI_ENABLE_TRANSCRIPTION", "1") == "1"
+    if not enabled:
+        logger.warning("[TRANSCRIPTION] Transcription is DISABLED via TRANSCRIPTAI_ENABLE_TRANSCRIPTION=0")
+    else:
+        logger.debug("[TRANSCRIPTION] Transcription is ENABLED")
+    return enabled
 
 
 def _forced_language() -> Optional[str]:
@@ -132,6 +152,9 @@ class WhisperProcessor:
         Returns:
             True if model loaded successfully, False otherwise
         """
+        _load_start = time.perf_counter()
+        _load_timestamp = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime())
+        startup_logger.info("[WHISPER] phase=model_load_start timestamp=%s model_name=%s", _load_timestamp, self.model_name)
         try:
             logger.info(f"Loading Whisper model: {self.model_name}")
 
@@ -142,6 +165,7 @@ class WhisperProcessor:
                 
                 # Use bundled model cache if available (for packaged apps)
                 import os
+                _cache_check_start = time.perf_counter()
                 cache_dir = os.environ.get('XDG_CACHE_HOME')
                 if cache_dir:
                     download_root = os.path.join(cache_dir, 'whisper')
@@ -155,17 +179,26 @@ class WhisperProcessor:
                             logger.warning(f"⚠️  [CACHE] Could not list cache contents: {e}")
                     else:
                         logger.warning(f"⚠️  [CACHE] Cache directory not found: {download_root}")
+                else:
+                    logger.warning("⚠️  [CACHE] XDG_CACHE_HOME not set, using default Whisper cache (will download if needed)")
+                _cache_check_elapsed = (time.perf_counter() - _cache_check_start) * 1000
+                startup_logger.info("[WHISPER] phase=cache_check elapsed=%.3fms", _cache_check_elapsed)
+                
+                _model_load_start = time.perf_counter()
+                if cache_dir:
                     self.model = whisper.load_model(
                         self.model_name, 
                         device=self.device,
                         download_root=download_root
                     )
                 else:
-                    logger.warning("⚠️  [CACHE] XDG_CACHE_HOME not set, using default Whisper cache (will download if needed)")
                     self.model = whisper.load_model(self.model_name, device=self.device)
+                _model_load_elapsed = (time.perf_counter() - _model_load_start) * 1000
+                startup_logger.info("[WHISPER] phase=model_file_load elapsed=%.3fms", _model_load_elapsed)
 
                 logger.info(f"Whisper model {self.model_name} loaded successfully on {self.device}")
 
+                _model_info_start = time.perf_counter()
                 # Log model information
                 debug_helper.log_debug_info(
                     "whisper_model_loaded",
@@ -176,12 +209,18 @@ class WhisperProcessor:
                         "model_size_mb": sum(p.numel() * p.element_size() for p in self.model.parameters()) / (1024 * 1024)
                     }
                 )
+                _model_info_elapsed = (time.perf_counter() - _model_info_start) * 1000
+                startup_logger.info("[WHISPER] phase=model_info_log elapsed=%.3fms", _model_info_elapsed)
 
                 self._model_loaded = True
                 self._last_load_error = None
+                _load_total_elapsed = (time.perf_counter() - _load_start) * 1000
+                startup_logger.info("[WHISPER] phase=model_load_complete elapsed=%.3fms", _load_total_elapsed)
                 return True
 
         except Exception as e:
+            _load_error_elapsed = (time.perf_counter() - _load_start) * 1000
+            startup_logger.error("[WHISPER] phase=model_load_error elapsed=%.3fms error=%s", _load_error_elapsed, str(e))
             logger.error(f"Failed to load Whisper model {self.model_name}: {e}")
             debug_helper.capture_exception(
                 "whisper_model_loading",
@@ -203,6 +242,10 @@ class WhisperProcessor:
         if self._model_loaded:
             return False
 
+        _ensure_start = time.perf_counter()
+        _ensure_timestamp = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime())
+        startup_logger.info("[WHISPER] phase=ensure_loaded_start timestamp=%s background=%s", _ensure_timestamp, background)
+        
         acquired = False
         start_wait = time.perf_counter()
         try:
@@ -211,12 +254,16 @@ class WhisperProcessor:
                 acquired = True
             else:
                 acquired = self._load_lock.acquire(timeout=timeout)
+            lock_wait_elapsed = time.perf_counter() - start_wait
+            startup_logger.info("[WHISPER] phase=lock_acquired elapsed=%.3fms", lock_wait_elapsed * 1000)
             if not acquired:
                 waited = time.perf_counter() - start_wait
                 self._last_load_error = f"timeout after {waited:.3f}s waiting for Whisper model load lock"
+                startup_logger.error("[WHISPER] phase=lock_timeout elapsed=%.3fms", waited * 1000)
                 raise TimeoutError(self._last_load_error)
 
             if self._model_loaded:
+                startup_logger.info("[WHISPER] phase=ensure_loaded_skip already_loaded=1")
                 return False
 
             self._loading_in_progress = True
@@ -233,11 +280,15 @@ class WhisperProcessor:
                 logger.info(
                     "[WHISPER] model_load status=complete elapsed=%.3fs", elapsed
                 )
+                _ensure_total_elapsed = (time.perf_counter() - _ensure_start) * 1000
+                startup_logger.info("[WHISPER] phase=ensure_loaded_complete elapsed=%.3fms", _ensure_total_elapsed)
             else:
                 self._last_load_error = "Whisper model failed to load"
                 logger.error(
                     "[WHISPER] model_load status=failed elapsed=%.3fs", elapsed
                 )
+                _ensure_total_elapsed = (time.perf_counter() - _ensure_start) * 1000
+                startup_logger.error("[WHISPER] phase=ensure_loaded_failed elapsed=%.3fms", _ensure_total_elapsed)
                 raise RuntimeError("Whisper model failed to load")
             return success
         finally:
@@ -247,13 +298,21 @@ class WhisperProcessor:
                 self._load_lock.release()
 
     def get_status(self) -> Dict[str, Any]:
-        """Return current model status for diagnostics and health reporting."""
+        """
+        Return current model status for diagnostics and health reporting.
+        
+        IMPORTANT: Returns "ready" if processor is initialized, even if model weights
+        aren't loaded yet. Model loads lazily on first transcription request.
+        This allows frontend to show "ready" status and enable transcription immediately.
+        """
         if self._loading_in_progress:
             status = "loading"
         elif self._model_loaded:
             status = "ready"
         else:
-            status = "not_loaded"
+            # Processor is initialized and ready to transcribe
+            # Model will load automatically on first transcription request
+            status = "ready"
 
         return {
             "status": status,
@@ -286,23 +345,34 @@ class WhisperProcessor:
         Returns:
             Dictionary containing transcription results
         """
-        logger.info(f"Starting transcription: {audio_path}")
+        logger.info(f"[TRANSCRIPTION] Starting transcription: {audio_path}")
+        transcription_start_time = time.perf_counter()
         
+        # Check if transcription is enabled
         if not _transcription_enabled():
             error_msg = "Transcription disabled (env flag)"
-            logger.warning(error_msg)
+            logger.error(f"[TRANSCRIPTION] FAILED: {error_msg}")
+            logger.error(f"[TRANSCRIPTION] Check TRANSCRIPTAI_ENABLE_TRANSCRIPTION environment variable")
             return {
                 "audio_path": audio_path,
                 "transcription_success": False,
                 "error": error_msg,
                 "transcription_timestamp": datetime.now().isoformat()
             }
+        logger.debug(f"[TRANSCRIPTION] Transcription enabled check passed")
 
+        # Ensure model is loaded
+        logger.debug(f"[TRANSCRIPTION] Ensuring model is loaded (model_name={self.model_name}, device={self.device})")
         try:
-            self.ensure_loaded()
+            model_loaded = self.ensure_loaded()
+            if model_loaded:
+                logger.debug(f"[TRANSCRIPTION] Model already loaded")
+            else:
+                logger.info(f"[TRANSCRIPTION] Model loaded successfully")
         except TimeoutError as exc:
             error_msg = f"Whisper model load timed out: {exc}"
-            logger.error(error_msg)
+            logger.error(f"[TRANSCRIPTION] FAILED: {error_msg}")
+            logger.error(f"[TRANSCRIPTION] Model loading timed out after waiting")
             return {
                 "audio_path": audio_path,
                 "transcription_success": False,
@@ -311,7 +381,10 @@ class WhisperProcessor:
             }
         except Exception as exc:
             error_msg = f"Whisper model load failed: {exc}"
-            logger.error(error_msg)
+            logger.error(f"[TRANSCRIPTION] FAILED: {error_msg}")
+            logger.error(f"[TRANSCRIPTION] Exception during model load: {type(exc).__name__}: {exc}")
+            import traceback
+            logger.debug(f"[TRANSCRIPTION] Model load traceback:\n{traceback.format_exc()}")
             return {
                 "audio_path": audio_path,
                 "transcription_success": False,
@@ -322,8 +395,15 @@ class WhisperProcessor:
         with PerformanceMonitor("whisper_transcription") as monitor:
             try:
                 # Verify audio file exists
+                logger.debug(f"[TRANSCRIPTION] Checking if audio file exists: {audio_path}")
                 if not os.path.exists(audio_path):
-                    raise FileNotFoundError(f"Audio file not found: {audio_path}")
+                    error_msg = f"Audio file not found: {audio_path}"
+                    logger.error(f"[TRANSCRIPTION] FAILED: {error_msg}")
+                    raise FileNotFoundError(error_msg)
+                
+                # Check file size
+                file_size = os.path.getsize(audio_path)
+                logger.info(f"[TRANSCRIPTION] Audio file found: {audio_path} (size: {file_size} bytes)")
                 
                 # Prepare transcription options
                 # Build options with conservative settings for short clips
@@ -351,19 +431,38 @@ class WhisperProcessor:
                 else:
                     logger.info("Auto-detecting language")
                 
-                logger.debug(f"Transcription options: {options}")
+                logger.debug(f"[TRANSCRIPTION] Transcription options: {options}")
+                logger.info(f"[TRANSCRIPTION] Starting Whisper model transcription (model={self.model_name}, device={self.device})")
                 
                 # Perform transcription
+                transcribe_start = time.perf_counter()
                 result = self.model.transcribe(audio_path, **options)
+                transcribe_elapsed = time.perf_counter() - transcribe_start
+                logger.info(f"[TRANSCRIPTION] Whisper model transcription completed in {transcribe_elapsed:.2f}s")
                 
                 # Extract key information
+                logger.debug(f"[TRANSCRIPTION] Extracting transcription data from result")
+                extracted_text = result.get("text", "").strip()
+                extracted_language = result.get("language", "unknown")
+                extracted_segments = result.get("segments", [])
+                
+                logger.info(f"[TRANSCRIPTION] Extracted text length: {len(extracted_text)} characters")
+                logger.info(f"[TRANSCRIPTION] Extracted language: {extracted_language}")
+                logger.info(f"[TRANSCRIPTION] Number of segments: {len(extracted_segments)}")
+                
+                if not extracted_text:
+                    logger.warning(f"[TRANSCRIPTION] WARNING: Extracted text is EMPTY!")
+                    logger.warning(f"[TRANSCRIPTION] This may indicate silence was detected or transcription failed")
+                    logger.debug(f"[TRANSCRIPTION] Result keys: {list(result.keys())}")
+                    logger.debug(f"[TRANSCRIPTION] Segments: {extracted_segments[:3] if extracted_segments else 'None'}")
+                
                 transcription_data = {
                     "audio_path": audio_path,
                     "transcription_success": True,
-                    "text": result.get("text", "").strip(),
-                    "language": result.get("language", "unknown"),
+                    "text": extracted_text,
+                    "language": extracted_language,
                     "language_probability": result.get("language_probability", 0.0),
-                    "segments": result.get("segments", []),
+                    "segments": extracted_segments,
                     "transcription_timestamp": datetime.now().isoformat(),
                     "model_used": self.model_name,
                     "device_used": self.device,
@@ -375,10 +474,14 @@ class WhisperProcessor:
                     transcription_data["word_count"] = len(transcription_data["text"].split())
                     transcription_data["character_count"] = len(transcription_data["text"])
                     transcription_data["confidence_score"] = self._calculate_confidence(result.get("segments", []))
+                    logger.info(f"[TRANSCRIPTION] SUCCESS: Transcription completed")
+                    logger.info(f"[TRANSCRIPTION] Text: {extracted_text[:100]}..." if len(extracted_text) > 100 else f"[TRANSCRIPTION] Text: {extracted_text}")
+                    logger.info(f"[TRANSCRIPTION] Word count: {transcription_data.get('word_count', 0)}, Character count: {transcription_data.get('character_count', 0)}")
+                else:
+                    logger.warning(f"[TRANSCRIPTION] WARNING: Transcription returned empty text")
+                    logger.warning(f"[TRANSCRIPTION] Language detected: {extracted_language}, but no text extracted")
                 
-                logger.info(f"Transcription completed successfully for {audio_path}")
-                logger.info(f"Language detected: {transcription_data['language']} (confidence: {transcription_data['language_probability']:.2f})")
-                logger.info(f"Text length: {transcription_data.get('word_count', 0)} words, {transcription_data.get('character_count', 0)} characters")
+                logger.info(f"[TRANSCRIPTION] Language detected: {transcription_data['language']} (confidence: {transcription_data['language_probability']:.2f})")
                 
                 # Log debug information
                 debug_helper.log_debug_info(
@@ -395,7 +498,13 @@ class WhisperProcessor:
                 return transcription_data
                 
             except Exception as e:
-                logger.error(f"Transcription failed for {audio_path}: {e}")
+                transcription_elapsed = time.perf_counter() - transcription_start_time
+                logger.error(f"[TRANSCRIPTION] FAILED: Transcription failed for {audio_path} after {transcription_elapsed:.2f}s")
+                logger.error(f"[TRANSCRIPTION] Error type: {type(e).__name__}")
+                logger.error(f"[TRANSCRIPTION] Error message: {str(e)}")
+                import traceback
+                logger.debug(f"[TRANSCRIPTION] Traceback:\n{traceback.format_exc()}")
+                
                 debug_helper.capture_exception(
                     "whisper_transcription",
                     e,

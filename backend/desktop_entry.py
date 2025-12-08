@@ -10,6 +10,7 @@ This avoids relying on repository files like config.js when running from a packa
 import os
 import sys
 import traceback
+import time
 from typing import Optional
 from datetime import datetime
 
@@ -115,10 +116,20 @@ def main() -> int:
                     print(f"⚠️  {error_msg}")
                     write_error_log(data_dir, "mlx", error_msg, traceback.format_exc())
 
+            _app_import_start = time.perf_counter()
             from app.main import app as _app  # type: ignore
             app = _app
-            print("✅ FastAPI app imported successfully")
+            _app_import_elapsed = time.perf_counter() - _app_import_start
+            print(f"✅ FastAPI app imported successfully (took {_app_import_elapsed:.2f}s)")
             sys.stdout.flush()
+            
+            # Log to startup logger if available
+            try:
+                import logging
+                startup_logger = logging.getLogger("transcriptai.startup")
+                startup_logger.info("[PYTHON_INIT] phase=desktop_entry_import_app elapsed=%.3fms", _app_import_elapsed * 1000)
+            except Exception:
+                pass
         except ImportError as e:
             error_msg = f"Failed to import FastAPI app module: {e}"
             print(f"❌ {error_msg}")

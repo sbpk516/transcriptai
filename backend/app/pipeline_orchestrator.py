@@ -682,37 +682,10 @@ class AudioProcessingPipeline:
             
             # Store transcript with retry logic
             # Get transcription data from pipeline data
-            transcription_data = None
-            if call_id in self.pipeline_data:
-                # Try transcription_data first (raw Whisper result)
-                if "transcription_data" in self.pipeline_data[call_id]:
-                    transcription_data = self.pipeline_data[call_id]["transcription_data"]
-                    logger.info(f"DEBUG: Using transcription_data, text length: {len(transcription_data.get('text', ''))}")
-                # Fallback to transcription_result if transcription_data not available
-                elif "transcription_result" in self.pipeline_data[call_id]:
-                    transcription_result = self.pipeline_data[call_id]["transcription_result"]
-                    # Extract from transcription_result structure
-                    if "transcript" in transcription_result:
-                        transcription_data = transcription_result["transcript"]
-                        logger.info(f"DEBUG: Using transcription_result.transcript, text length: {len(transcription_data.get('text', ''))}")
-                    elif "transcription_text" in transcription_result:
-                        # Convert transcription_text to transcription_data format
-                        transcription_data = {
-                            "text": transcription_result.get("transcription_text", ""),
-                            "language": transcription_result.get("language", "en"),
-                            "confidence_score": 0.0
-                        }
-                        logger.info(f"DEBUG: Using transcription_result.transcription_text, text length: {len(transcription_data.get('text', ''))}")
-            
-            if not transcription_data:
-                logger.warning(f"DEBUG: No transcription data found in pipeline_data for {call_id}, using empty default")
+            if call_id in self.pipeline_data and "transcription_data" in self.pipeline_data[call_id]:
+                transcription_data = self.pipeline_data[call_id]["transcription_data"]
+            else:
                 transcription_data = {"text": "", "language": "en", "confidence_score": 0.0}
-            
-            # Ensure text field exists and is not None
-            if not transcription_data.get("text"):
-                logger.warning(f"DEBUG: Transcription data has empty text for {call_id}")
-                logger.warning(f"DEBUG: Transcription data keys: {list(transcription_data.keys())}")
-                logger.warning(f"DEBUG: Full transcription_data: {transcription_data}")
             
             transcript_result = await self._retry_operation(
                 lambda: self.db_integration.store_transcript(call_id, transcription_data),

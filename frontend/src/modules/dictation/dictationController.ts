@@ -536,6 +536,11 @@ export function useDictationController(): DictationControllerState {
         durationMs: snippet.durationMs,
         base64Length: snippet.base64Audio.length,
       })
+      log('debug', 'dictation status changed to processing', {
+        requestId,
+        previousStatus: 'recording',
+        newStatus: 'processing',
+      })
 
       void submitDictationSnippetWithRetry(
         {
@@ -584,39 +589,8 @@ export function useDictationController(): DictationControllerState {
             log('debug', 'dictation transcript received', { transcript })
             const expectedTarget = releaseTargetRef.current ?? null
             
-            // Guard against duplicate processing of the same transcript
-            if (lastInsertedTranscriptRef.current === transcript) {
-              log('warn', 'dictation transcript already processed, skipping duplicate', { transcript })
-              return
-            }
-            
-            void insertDictationText(transcript, {
-              expectedTarget,
-              allowBridge: false,
-              allowClipboard: false,
-            }).then(outcome => {
-              log('debug', 'dictation text inserted', outcome)
-              // If insertion succeeded, mark as processed and do not call fallback
-              if (outcome.ok) {
-                lastInsertedTranscriptRef.current = transcript
-                log('debug', 'dictation text insertion succeeded, skipping fallback', { method: outcome.method })
-                return
-              }
-              // Only use fallback for specific failure reasons where no insertion occurred
-              if (outcome.reason === 'target_mismatch') {
-                log('info', 'dictation insertion skipped – target changed before insert, using fallback')
-                lastInsertedTranscriptRef.current = transcript
-                requestAutoPaste(transcript)
-              } else if (outcome.reason === 'no_target') {
-                log('info', 'dictation insertion skipped – no target available, using fallback')
-                lastInsertedTranscriptRef.current = transcript
-                requestAutoPaste(transcript)
-              } else {
-                // For other failure reasons (bridge_failed, clipboard_failed), do not retry
-                // as these indicate the fallback methods also failed
-                log('debug', 'dictation auto paste skipped – insertion failed with non-fallback reason', { reason: outcome.reason })
-              }
-            })
+            // Reset status to idle first - upload succeeded regardless of insertion outcome
+            // This ensures status is always reset, even for duplicates or empty transcripts
             releaseTargetRef.current = null
             setState(prev => ({
               ...prev,
@@ -631,6 +605,68 @@ export function useDictationController(): DictationControllerState {
                 lastError: null,
               },
             }))
+            log('debug', 'dictation status reset to idle after successful upload', {
+              requestId,
+              transcriptLength: transcript.length,
+              isDuplicate: lastInsertedTranscriptRef.current === transcript,
+            })
+            
+            // Guard against duplicate processing of the same transcript
+            // Note: Status is already reset above, so we can safely return early here
+            if (lastInsertedTranscriptRef.current === transcript) {
+              log('warn', 'dictation transcript already processed, skipping duplicate insertion', { 
+                transcript,
+                transcriptLength: transcript.length,
+              })
+              return
+            }
+            
+            // Handle empty transcript - no need to attempt insertion
+            if (!transcript || transcript.trim().length === 0) {
+              log('debug', 'dictation transcript is empty, skipping insertion', { transcript })
+              lastInsertedTranscriptRef.current = transcript
+              return
+            }
+            
+            // Attempt text insertion with error handling
+            void insertDictationText(transcript, {
+              expectedTarget,
+              allowBridge: false,
+              allowClipboard: false,
+            })
+              .then(outcome => {
+                log('debug', 'dictation text inserted', outcome)
+                // If insertion succeeded, mark as processed and do not call fallback
+                if (outcome.ok) {
+                  lastInsertedTranscriptRef.current = transcript
+                  log('debug', 'dictation text insertion succeeded, skipping fallback', { method: outcome.method })
+                  return
+                }
+                // Only use fallback for specific failure reasons where no insertion occurred
+                if (outcome.reason === 'target_mismatch') {
+                  log('info', 'dictation insertion skipped – target changed before insert, using fallback')
+                  lastInsertedTranscriptRef.current = transcript
+                  requestAutoPaste(transcript)
+                } else if (outcome.reason === 'no_target') {
+                  log('info', 'dictation insertion skipped – no target available, using fallback')
+                  lastInsertedTranscriptRef.current = transcript
+                  requestAutoPaste(transcript)
+                } else {
+                  // For other failure reasons (bridge_failed, clipboard_failed), do not retry
+                  // as these indicate the fallback methods also failed
+                  log('debug', 'dictation auto paste skipped – insertion failed with non-fallback reason', { reason: outcome.reason })
+                }
+              })
+              .catch(error => {
+                // Defensive error handling for unexpected errors in insertDictationText
+                const errorMessage = error instanceof Error ? error.message : String(error)
+                log('error', 'unexpected error during dictation text insertion', {
+                  error: errorMessage,
+                  transcriptLength: transcript.length,
+                })
+                // Status is already reset to idle above, so we don't need to reset it here
+                // Just log the error for debugging
+              })
             return
           }
 
@@ -639,6 +675,12 @@ export function useDictationController(): DictationControllerState {
             requestId,
             error: errorMessage,
             status: result.status,
+          })
+          log('debug', 'dictation status changed to error', {
+            requestId,
+            previousStatus: 'processing',
+            newStatus: 'error',
+            errorMessage,
           })
           setState(prev => ({
             ...prev,
@@ -661,6 +703,12 @@ export function useDictationController(): DictationControllerState {
         .catch(error => {
           const errorMessage = error instanceof Error ? error.message : 'dictation upload failed'
           log('error', 'dictation upload exception', { requestId, error: errorMessage })
+          log('debug', 'dictation status changed to error (exception)', {
+            requestId,
+            previousStatus: 'processing',
+            newStatus: 'error',
+            errorMessage,
+          })
           setState(prev => ({
             ...prev,
             status: 'error',

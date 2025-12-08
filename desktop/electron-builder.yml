@@ -11,9 +11,15 @@ extraResources:
   # Include the built frontend (relative to desktop/ when running builder)
   - from: ../frontend/dist
     to: frontend_dist
-  # Include prebuilt backend binaries (place binaries under backend/bin before packaging)
+  # Include prebuilt backend (directory for --onedir or binary for --onefile)
+  # Place backend directory or binary under backend/bin before packaging
   - from: ../backend/bin
     to: backend
+    filter:
+      - "**/*"
+  # Include cache manager for PyInstaller bundle caching
+  - from: ../backend/pyinstaller_cache_manager.js
+    to: backend/pyinstaller_cache_manager.js
   # Include MLX virtual environment (Option A packaging)
   - from: ../venv_mlx
     to: venv_mlx

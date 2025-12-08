@@ -365,7 +365,7 @@ async function startBackendProd() {
     env.HUGGINGFACE_HUB_TOKEN = hfToken
   }
   const binName = process.platform === 'win32' ? 'transcriptai-backend.exe' : 'transcriptai-backend'
-  const binPath = path.join(process.resourcesPath, 'backend', binName)
+  const binPath = path.join(process.resourcesPath, 'backend', 'transcriptai-backend', binName)
   logLine('spawn_backend_prod', JSON.stringify({ binPath, env: { TRANSCRIPTAI_MODE: env.TRANSCRIPTAI_MODE, TRANSCRIPTAI_PORT: env.TRANSCRIPTAI_PORT, TRANSCRIPTAI_DATA_DIR: env.TRANSCRIPTAI_DATA_DIR } }))
   backendProcess = spawn(binPath, [], { env, stdio: ['ignore', 'pipe', 'pipe'] })
   backendInfo.pid = backendProcess.pid
@@ -548,19 +548,32 @@ function createAppMenu() {
 }
 
 app.on('ready', async () => {
+  const launchStartTime = Date.now()
+  const launchStartTimestamp = new Date().toISOString()
+  logLine('[LAUNCH] phase=electron_ready timestamp=' + launchStartTimestamp)
+
+  let dictationSettingsStartTime = Date.now()
   let initialDictationSettings = null
   try {
     initialDictationSettings = dictationSettings.loadSettings()
     dictationSettingsReady = true
+    const dictationSettingsElapsed = Date.now() - dictationSettingsStartTime
+    logLine('[LAUNCH] phase=dictation_settings_load elapsed=' + dictationSettingsElapsed + 'ms')
     logLine('dictation_settings_loaded', initialDictationSettings)
   } catch (error) {
+    const dictationSettingsElapsed = Date.now() - dictationSettingsStartTime
+    logLine('[LAUNCH] phase=dictation_settings_load elapsed=' + dictationSettingsElapsed + 'ms error=' + error.message)
     logLine('dictation_settings_load_error', error.message)
   }
+
+  let dictationManagerSyncStartTime = Date.now()
   if (initialDictationSettings) {
     await syncDictationManager(initialDictationSettings)
   } else {
     await syncDictationManager({ enabled: false })
   }
+  const dictationManagerSyncElapsed = Date.now() - dictationManagerSyncStartTime
+  logLine('[LAUNCH] phase=dictation_manager_sync elapsed=' + dictationManagerSyncElapsed + 'ms')
   const manager = getDictationManager()
   manager.on('dictation:press-start', payload => {
     logLine('dictation_event_start', payload)
@@ -799,7 +812,7 @@ ipcMain.handle('open-update-download', async () => {
       hasDownloadUrl: !!manifest?.downloadUrl,
       latestVersion: manifest?.latestVersion || null,
     })
-  } catch (_) {}
+  } catch (_) { }
   if (!manifest || !manifest.downloadUrl) {
     const error = new Error('No update download URL available')
     logLine('update_open_error', error.message)
@@ -815,7 +828,7 @@ ipcMain.handle('open-update-download', async () => {
         protocol: parsed.protocol,
         hostname: parsed.hostname,
       })
-    } catch (_) {}
+    } catch (_) { }
     if (parsed.protocol !== 'https:' || parsed.hostname !== allowedHost) {
       throw new Error(`Blocked download URL: ${parsed.toString()}`)
     }
