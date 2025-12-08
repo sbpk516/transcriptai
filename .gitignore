@@ -150,7 +150,6 @@ git-account-manager.sh
 setup-git-aliases.sh
 troubleshoot-git-accounts.sh
 MULTIPLE_GITHUB_ACCOUNTS_CONCEPT_GUIDE.md
-GIT_ACCOUNT_MANAGER_GUIDE.md
 # Git Account Manager backup files
 *.bak.*
 git-account-manager.sh.bak.*
@@ -241,3 +240,12 @@ docs/journal/
 !docs/prompt-pack/
 !docs/prompt-pack/*.md
 venv_mlx/
+
+# IDE
+.cursor/
+
+# Build and Runtime Junk
+backend/hooks/
+backend/pyinstaller_cache*
+backend/transcriptai_data/
+venv.backup/
