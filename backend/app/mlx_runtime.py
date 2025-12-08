@@ -184,11 +184,34 @@ def activate_mlx_site_packages(reason: str = "", *, log: Optional[logging.Logger
 
     venv_root = get_mlx_venv_root()
     if venv_root:
+        # Build list of library paths to try
+        lib_paths = []
+        
+        # Primary: venv_root/lib (contains libmlx.dylib via mlx/lib/)
         lib_dir = venv_root / "lib"
         if lib_dir.exists():
-            current = os.environ.get("DYLD_LIBRARY_PATH", "")
-            lib_str = str(lib_dir)
-            if lib_str not in current.split(":"):
-                os.environ["DYLD_LIBRARY_PATH"] = f"{lib_str}:{current}" if current else lib_str
+            lib_paths.append(str(lib_dir))
+        
+        # Secondary: Direct path to mlx/lib where libmlx.dylib actually lives
+        mlx_lib_dir = venv_root / "lib" / "python3.11" / "site-packages" / "mlx" / "lib"
+        if mlx_lib_dir.exists():
+            lib_paths.append(str(mlx_lib_dir))
+        
+        if lib_paths:
+            # Use DYLD_FALLBACK_LIBRARY_PATH instead of DYLD_LIBRARY_PATH
+            # DYLD_FALLBACK_LIBRARY_PATH works better in sandboxed macOS apps
+            current = os.environ.get("DYLD_FALLBACK_LIBRARY_PATH", "")
+            new_paths = ":".join(lib_paths)
+            
+            # Add new paths to the beginning
+            if current:
+                os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = f"{new_paths}:{current}"
+            else:
+                os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = new_paths
+            
+            target_logger.debug(
+                "Set DYLD_FALLBACK_LIBRARY_PATH with MLX library paths: %s",
+                new_paths
+            )
 
     return True
