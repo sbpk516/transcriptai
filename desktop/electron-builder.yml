@@ -43,7 +43,7 @@ extraResources:
   # Include native helper for global key listener (macOS)
   - from: node_modules/node-global-key-listener/bin
     to: bin
-beforePack: ../scripts/fix-mlx-rpath.sh
+beforePack: scripts/beforePack.js
 mac:
   target: [dmg]
   category: public.app-category.productivity
