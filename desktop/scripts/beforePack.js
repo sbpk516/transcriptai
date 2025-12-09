@@ -4,7 +4,7 @@ const path = require('path');
 module.exports = async function (context) {
     console.log('[beforePack] Running MLX @rpath fix...');
 
-    const scriptPath = path.join(__dirname, '..', 'scripts', 'fix-mlx-rpath.sh');
+    const scriptPath = path.join(__dirname, '..', '..', 'scripts', 'fix-mlx-rpath.sh');
 
     try {
         execSync(`bash "${scriptPath}"`, {
