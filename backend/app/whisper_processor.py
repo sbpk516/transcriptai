@@ -412,11 +412,13 @@ class WhisperProcessor:
                     "task": task,
                     "verbose": verbose,
                     "fp16": self.device in ["cuda", "mps"],  # Enable fp16 for GPU acceleration
-                    "temperature": 0.0,            # Deterministic decoding
+                    # Use standard temperature fallback to allow breaking out of loops
+                    "temperature": (0.0, 0.2, 0.4, 0.6, 0.8, 1.0),
                     "condition_on_previous_text": False,
-                    # Lower the speech/no-speech threshold a bit to avoid
-                    # empty outputs on short/quiet samples.
-                    "no_speech_threshold": 0.3,
+                    # Standard settings to reject silence and repeating loops
+                    "no_speech_threshold": 0.6,
+                    "compression_ratio_threshold": 2.4,
+                    "logprob_threshold": -1.0,
                 }
 
                 # Apply language selection: prefer explicit arg, else forced policy
