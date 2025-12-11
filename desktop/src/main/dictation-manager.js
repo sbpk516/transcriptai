@@ -99,12 +99,13 @@ class DictationManager extends EventEmitter {
 
       if (mode === 'paste') {
         const pasteResult = await this._attemptAutoPaste(text)
-        if (pasteResult.ok) {
-          return pasteResult
+        if (!pasteResult.ok) {
+          this._log.debug('Auto-paste reported error (ignored to prevent double-entry)', {
+            reason: pasteResult.reason,
+            error: pasteResult.error,
+          })
         }
-        this._log.warn('typeText auto-paste fallback to typing', {
-          reason: pasteResult.reason || 'unknown',
-        })
+        return { ok: true, method: 'paste' }
       }
 
       if (process.env.TRANSCRIPTAI_DICTATION_USE_CLIPBOARD === '1' && mode !== 'paste') {
@@ -416,7 +417,7 @@ class DictationManager extends EventEmitter {
     this._lastEventTs = 0
     this._targetKeySet.clear()
     this._activeKeySet.clear()
-   this._pressStartedAt = null
+    this._pressStartedAt = null
     this._clearPendingPermission({ reason: 'manager_disposed' })
     this._clearStuckKeyTimer()
     this.removeAllListeners()
@@ -452,7 +453,7 @@ class DictationManager extends EventEmitter {
       if (!event || !event.state) {
         return
       }
-      
+
       // DEBUG: Log ALL raw events to diagnose Option key issue
       const rawName = event.name || (event.rawKey && event.rawKey.name) || 'unknown'
       this._log.debug('[DEBUG] raw key event received', {
@@ -461,7 +462,7 @@ class DictationManager extends EventEmitter {
         rawKeyName: event.rawKey && event.rawKey.name,
         vKey: event.vKey,
       })
-      
+
       const keyCode = this._mapListenerEventToKey(event)
       if (keyCode === null || keyCode === undefined) {
         this._log.debug('[DEBUG] key mapping returned null', {
@@ -922,7 +923,7 @@ class DictationManager extends EventEmitter {
       } else {
         this._log.debug('dictation lifecycle event', { eventName, payload })
       }
-    } catch (_) {}
+    } catch (_) { }
     try {
       this.emit(eventName, payload)
     } catch (error) {
