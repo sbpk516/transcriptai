@@ -239,10 +239,22 @@ docs/journal/
 !docs/project-rules.md
 !docs/prompt-pack/
 !docs/prompt-pack/*.md
+
+# Allow development control docs
+!docs/FEATURE_ROADMAP.md
+!docs/FEATURE_ADDITION_PROCESS.md
+!docs/FEATURE_IMPACT_LOG.md
+!docs/CHANGE_REQUEST_TEMPLATE.md
+
+# Allow guides
+!docs/guides/
+!docs/guides/*.md
+
 venv_mlx/
 
-# IDE
+# IDE (but allow .cursor/rules)
 .cursor/
+!.cursor/rules
 
 # Build and Runtime Junk
 backend/hooks/

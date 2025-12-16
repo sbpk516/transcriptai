@@ -1,0 +1,74 @@
+# TranscriptAI Development Rules
+# These rules are MANDATORY for all AI-assisted development
+
+## BEFORE ANY CHANGE
+
+1. State what you're changing and why (max 2 sentences)
+2. List files that will be modified (max 3 files for features, 1 for bug fixes)
+3. Confirm no new dependencies required (or get explicit approval)
+4. Describe rollback plan if it fails
+
+## DURING CHANGES
+
+1. One logical change at a time
+2. Test immediately after each change
+3. If something breaks, STOP and fix before continuing
+4. No "cleanup" or "improvements" beyond the request
+5. Follow existing code patterns - don't introduce new paradigms
+
+## FORBIDDEN ACTIONS
+
+- Adding new npm/pip packages without explicit user approval
+- Modifying more than 3 files for a single feature
+- Changing core infrastructure (database schema, API structure) without discussion
+- "Refactoring" code that already works
+- Adding error handling for scenarios that can't happen
+- Creating new abstractions for one-time operations
+- Adding "future-proofing" code that isn't needed now
+
+## PERFORMANCE RULES
+
+- No blocking operations in UI thread
+- No unnecessary re-renders in React components
+- No synchronous file I/O in request handlers
+- Lazy load heavy modules (Whisper, NLP, MLX)
+- Avoid creating new files when existing files can be extended
+- Prefer simple solutions over complex ones
+
+## CODE QUALITY
+
+- Match existing code style exactly
+- Use existing utilities before creating new ones
+- Keep functions focused and small
+- No commented-out code in commits
+- Error messages must be actionable
+
+## TESTING REQUIREMENTS
+
+- Run `scripts/smoke-test.sh` before claiming feature is complete
+- Verify in dev mode before suggesting DMG build
+- If changing backend, test with `curl` commands
+- If changing frontend, verify in browser
+
+## WHEN ASKED TO ADD A FEATURE
+
+1. First, use the Change Request Template (docs/CHANGE_REQUEST_TEMPLATE.md)
+2. Get approval on the approach before coding
+3. Implement incrementally with tests after each step
+4. Update docs/FEATURE_IMPACT_LOG.md after completion
+
+## WHEN SOMETHING BREAKS
+
+1. STOP immediately
+2. Identify what caused the break
+3. Revert to last working state
+4. Fix the root cause, not symptoms
+5. Test thoroughly before proceeding
+
+## BUILD RULES
+
+- Never trigger DMG build until smoke test passes in dev mode
+- Monitor for size increases when adding features
+- If build time increases significantly, investigate why
+
+
