@@ -261,3 +261,11 @@ backend/hooks/
 backend/pyinstaller_cache*
 backend/transcriptai_data/
 venv.backup/
+
+# Downloaded Repositories
+Access GitHub Repository/
+Access GitHub Repository.zip
+
+# Allow development docs
+!docs/development/
+!docs/development/*.md

@@ -4,7 +4,7 @@ Main FastAPI application for TranscriptAI.
 import time
 from fastapi import FastAPI, Depends, HTTPException, File, UploadFile, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, PlainTextResponse
+from fastapi.responses import StreamingResponse, PlainTextResponse, FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from datetime import datetime
@@ -240,6 +240,9 @@ async def get_calls(db: Session = Depends(get_db)):
                     "id": call.id,
                     "call_id": call.call_id,
                     "status": call.status,
+                    "duration": call.duration,
+                    "original_filename": call.original_filename,
+                    "file_size_bytes": call.file_size_bytes,
                     "created_at": call.created_at.isoformat() if call.created_at else None
                 }
                 for call in calls
@@ -271,6 +274,63 @@ async def get_call(call_id: str, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Failed to get call {call_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve call")
+
+
+@app.get("/api/v1/audio/{call_id}")
+async def stream_audio(call_id: str, db: Session = Depends(get_db)):
+    """Stream audio file for a specific call."""
+    try:
+        call = db.query(Call).filter(Call.call_id == call_id).first()
+        if not call:
+            raise HTTPException(status_code=404, detail="Call not found")
+        
+        if not call.file_path or not os.path.exists(call.file_path):
+            raise HTTPException(status_code=404, detail="Audio file not found")
+            
+        return FileResponse(call.file_path, media_type="audio/wav", filename=call.original_filename or f"{call_id}.wav")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to stream audio for {call_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to stream audio")
+
+
+@app.delete("/api/v1/calls/{call_id}")
+async def delete_call(call_id: str, db: Session = Depends(get_db)):
+    """Delete a call and its associated data (transcript, analysis, audio file)."""
+    try:
+        call = db.query(Call).filter(Call.call_id == call_id).first()
+        if not call:
+            raise HTTPException(status_code=404, detail="Call not found")
+        
+        # Delete audio file if it exists
+        if call.file_path and os.path.exists(call.file_path):
+            try:
+                os.remove(call.file_path)
+                logger.info(f"Deleted audio file: {call.file_path}")
+            except Exception as e:
+                logger.error(f"Failed to delete audio file {call.file_path}: {e}")
+                # Continue with DB deletion even if file deletion fails
+        
+        # Delete related records
+        # Note: In a real production app, we might want cascading deletes in the DB
+        # or soft deletes. For now, we'll manually delete related records.
+        db.query(Transcript).filter(Transcript.call_id == call_id).delete()
+        db.query(Analysis).filter(Analysis.call_id == call_id).delete()
+        
+        # Delete call record
+        db.delete(call)
+        db.commit()
+        
+        logger.info(f"Successfully deleted call: {call_id}")
+        return {"ok": True, "call_id": call_id}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete call {call_id}: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to delete call")
 
 
 # ============================================================================
@@ -484,36 +544,83 @@ async def live_chunk(session_id: str, file: UploadFile = File(...)):
         else:
             # Give filesystem a moment to flush renamed chunk before conversion
             await asyncio.sleep(0.05)
+            
+            # Prepare the WAV path (source for transcription)
+            wav_path_to_transcribe = None
+            temp_merged_path = None
+            
             if idx == 0:
-                # Convert the first chunk so we can provide an early partial transcript
+                # First chunk (Header + Data): Convert directly
                 _ensure_whisper_ready_for_request("live_chunk")
                 converted = audio_processor.convert_audio_format(
                     str(sess.chunks[idx]), output_format="wav", sample_rate=16000, channels=1
                 )
-                wav_path = converted.get("output_path") if converted.get("conversion_success") else str(sess.chunks[idx])
-                logger.info(
-                    f"[MIC] chunk convert session_id={session_id} idx={idx} converted={converted.get('conversion_success')} wav={wav_path}"
-                )
-
-                part = whisper_processor.transcribe_audio(wav_path)
-                text = part.get("text", "") if part.get("transcription_success") else ""
-                logger.info(f"[MIC] chunk transcribed session_id={session_id} idx={idx} text_len={len(text)}")
-                live_sessions.set_partial(session_id, idx, text)
+                wav_path_to_transcribe = converted.get("output_path") if converted.get("conversion_success") else str(sess.chunks[idx])
+            else:
+                # Subsequent chunks (Headerless WebM Cluster): Merge with Header (Chunk 0)
+                # Strategy: Cat(Chunk 0, Chunk N) -> Temp.webm -> Wav -> Transcribe
+                try:
+                    header_path = sess.chunks[0]
+                    current_path = sess.chunks[idx]
+                    temp_merged_path = sess.dir / f"temp_merge_{idx}.webm"
+                    
+                    # Simple binary concatenation of Header + Current Cluster works for connection-oriented WebM
+                    with open(temp_merged_path, 'wb') as out_f:
+                        with open(header_path, 'rb') as head_f:
+                            out_f.write(head_f.read())
+                        with open(current_path, 'rb') as curr_f:
+                            out_f.write(curr_f.read())
+                            
+                    _ensure_whisper_ready_for_request("live_chunk_merged")
+                    converted = audio_processor.convert_audio_format(
+                        str(temp_merged_path), output_format="wav", sample_rate=16000, channels=1
+                    )
+                    wav_path_to_transcribe = converted.get("output_path") if converted.get("conversion_success") else None
+                    
+                except Exception as merge_err:
+                    logger.warning(f"[MIC] merge failed for idx={idx}: {merge_err}")
+            
+            if wav_path_to_transcribe:
+                # Perform transcription
+                part = whisper_processor.transcribe_audio(wav_path_to_transcribe)
+                full_text = part.get("text", "") if part.get("transcription_success") else ""
+                
+                # Logic to extract only NEW text:
+                # If idx > 0, the transcription includes the Header (Chunk 0) text.
+                # We should subtract the header text to avoid duplication in frontend.
+                text_to_emit = full_text
+                if idx > 0:
+                    header_text = live_sessions.partials[0] if len(live_sessions.partials) > 0 else ""
+                    if header_text and full_text.startswith(header_text):
+                        text_to_emit = full_text[len(header_text):].strip()
+                    # Fallback: if heuristics fail, just stick with full_text (or try overlap detection - kept simple for now)
+                
+                logger.info(f"[MIC] chunk transcribed session_id={session_id} idx={idx} full_len={len(full_text)} emit_len={len(text_to_emit)}")
+                live_sessions.set_partial(session_id, idx, text_to_emit)
 
                 await event_bus.publish(session_id, {
                     "type": "partial",
                     "call_id": session_id,
                     "chunk_index": idx,
-                    "text": text,
+                    "text": text_to_emit,
                 })
-                return {"ok": True, "chunk_index": idx, "text_length": len(text)}
+                
+                # Cleanup temp files
+                if temp_merged_path and temp_merged_path.exists():
+                    try:
+                        os.unlink(temp_merged_path)
+                    except: pass
+                # Note: we kept the converted wav of chunk 0 for potential reuse, but for merged chunks we clean up
+                if idx > 0 and wav_path_to_transcribe and os.path.exists(wav_path_to_transcribe):
+                    try:
+                        os.unlink(wav_path_to_transcribe)
+                    except: pass
+                    
+                return {"ok": True, "chunk_index": idx, "text_length": len(text_to_emit)}
             else:
-                # For non-batch, later chunks are headerless WebM clusters; skip any conversion/transcription
-                logger.info(
-                    f"[MIC] chunk skip convert session_id={session_id} idx={idx} reason=headerless-webm-cluster"
-                )
+                logger.warning(f"[MIC] chunk skip session_id={session_id} idx={idx} reason=conversion-failed")
                 live_sessions.set_partial(session_id, idx, "")
-                return {"ok": True, "chunk_index": idx, "skipped_conversion": True}
+                return {"ok": True, "chunk_index": idx, "skipped": True}
     except HTTPException:
         raise
     except Exception as e:
