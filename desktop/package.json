@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "concurrently -k -n VITE,ELECTRON -c \"magenta,cyan\" \"npm --prefix ../frontend run dev\" \"wait-on tcp:127.0.0.1:3000 && electron .\"",
     "dev:dictation-debug": "TRANSCRIPTAI_DICTATION_USE_CLIPBOARD=1 concurrently -k -n VITE,ELECTRON -c \"magenta,cyan\" \"npm --prefix ../frontend run dev\" \"wait-on tcp:127.0.0.1:3000 && electron .\"",
-    "start": "electron .",
+    "start": "electron src/main.js",
     "build:mac-key-server": "bash scripts/build-mac-key-server.sh",
     "pack": "npm run build:mac-key-server && npm --prefix ../frontend run build:electron && npm run prepack:check && electron-builder --dir -c electron-builder.yml",
     "prepack:check": "bash ../scripts/check-prepack.sh",
@@ -24,9 +24,9 @@
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
-    "electron-rebuild": "^3.2.9",
-    "electron": "^31.3.1",
+    "electron": "38.7.2",
     "electron-builder": "^24.13.3",
+    "electron-rebuild": "^3.2.9",
     "wait-on": "^7.2.0"
   }
 }

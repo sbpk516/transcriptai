@@ -271,3 +271,13 @@ Access GitHub Repository.zip
 !docs/development/*.md
 backend-cpp/models/*.bin
 desktop/node_modules/
+backend/.venv_lean/
+backend/backend/
+backend/data/
+*.bak
+*_pid
+pid_direct
+install_log.txt
+local-npm-cache/
+transcripts/
+node_modules/

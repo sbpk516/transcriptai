@@ -1,17 +1,2 @@
-# MLX Whisper Requirements for Apple Silicon
-# Install these for MLX-accelerated transcription (3.25x faster than PyTorch)
-# Only needed on macOS with Apple Silicon (M1/M2/M3)
-
-# Core MLX framework
-mlx==0.29.2
-mlx-metal==0.29.2
-
-# MLX Whisper (optimized for Apple Silicon)
-mlx-whisper==0.4.3
-
-# Note: These are IN ADDITION to the base requirements.txt
-# Installation:
-#   pip install -r requirements.txt
-#   pip install -r requirements-mlx.txt  # Only on Apple Silicon
-
-
+# MLX Dependencies Removed for Hybrid Architecture v2.0
+# See requirements.txt for core dependencies.
