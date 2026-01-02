@@ -20,9 +20,9 @@ NC='\033[0m' # No Color
 BACKEND_STARTUP_TIMEOUT=30
 FRONTEND_STARTUP_TIMEOUT=30
 HEALTH_CHECK_TIMEOUT=10
-HEALTH_CHECK_RETRIES=3
+HEALTH_CHECK_RETRIES=30
 FRONTEND_HEALTH_CHECK_TIMEOUT=15
-FRONTEND_HEALTH_CHECK_RETRIES=5
+FRONTEND_HEALTH_CHECK_RETRIES=20
 
 # Logging function
 log() {
@@ -114,6 +114,21 @@ start_backend() {
     export TRANSCRIPTAI_LIVE_MIC=1
     export TRANSCRIPTAI_LIVE_BATCH_ONLY=1
     
+    
+    # --- PHASE 3: Spawn C++ Servers ---
+    # We must start them here so the Python backend knows where to find them
+    # and because Electron isn't here to start them.
+    
+    # 1. Whisper Server (with model that exists)
+    log "Starting C++ Whisper Server..."
+    ../backend-cpp/whisper-server -m ../backend-cpp/models/ggml-base.en.bin --port 8091 \
+        > /tmp/whisper_server.log 2>&1 &
+    WHISPER_PID=$!
+    echo $WHISPER_PID > /tmp/transcriptai_whisper.pid
+    export WHISPER_CPP_PORT=8091
+    
+
+    
     python start.py &
     local backend_pid=$!
     cd ..
@@ -142,6 +157,17 @@ start_backend() {
         kill $backend_pid 2>/dev/null || true
         return 1
     fi
+    
+    # Export ports for the backend to likely pick up if we modify config? 
+    # Actually backend uses env vars for ports usually or hardcoded?
+    # backend/app/whisper_processor.py uses os.getenv("WHISPER_CPP_PORT")
+    # desktop/src/main.js passes them. 
+    # For web mode, we need to export them here so `start.py` (which runs uvicorn) picks them up?
+    # NO, start.py runs uvicorn in a subprocess or directly?
+    # start_backend function runs `python start.py`.
+    # So we need to export BEFORE running start.py in this function.
+    # Moving this block UP before `python start.py`
+
 }
 
 # Function to start frontend with timeout
@@ -216,6 +242,16 @@ cleanup() {
     pkill -f "uvicorn.*8001" || true
     pkill -f "vite.*3000" || true
     pkill -f "npm.*dev" || true
+    pkill -f "npm.*dev" || true
+    
+    if [ -f /tmp/transcriptai_whisper.pid ]; then
+        kill $(cat /tmp/transcriptai_whisper.pid) 2>/dev/null || true
+        rm /tmp/transcriptai_whisper.pid
+    fi
+     if [ -f /tmp/transcriptai_llama.pid ]; then
+        kill $(cat /tmp/transcriptai_llama.pid) 2>/dev/null || true
+        rm /tmp/transcriptai_llama.pid
+    fi
 }
 
 # Set up signal handlers for cleanup
