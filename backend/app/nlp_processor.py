@@ -19,12 +19,7 @@ from pathlib import Path
 import re
 import string
 
-# NLP Libraries
-import nltk
-from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
-from nltk.stem import WordNetLemmatizer
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+
 
 # Local imports
 from .debug_utils import debug_helper
@@ -57,10 +52,9 @@ class NLPProcessor:
         self._load_lock = asyncio.Lock()
 
         # Initialize NLTK components
-        self._initialize_nltk()
-        
-        # Initialize sentiment analyzer
-        self.sentiment_analyzer = SentimentIntensityAnalyzer()
+
+        # Initialize NLTK components and sentiment analyzer lazily
+        # self._initialize_nltk() and self.sentiment_analyzer are handled in _load_resources()
         
         # Intent classification patterns (rule-based for now)
         self.intent_patterns = {
@@ -102,6 +96,11 @@ class NLPProcessor:
     
     def _initialize_nltk(self):
         """Initialize NLTK components and download required data."""
+        import nltk
+        from nltk.corpus import stopwords
+        from nltk.tokenize import word_tokenize
+        from nltk.stem import WordNetLemmatizer
+
         try:
             offline_mode = os.getenv("TRANSCRIPTAI_MODE", "").lower() == "desktop" or os.getenv("TRANSCRIPTAI_OFFLINE", "0") == "1"
             if offline_mode:
@@ -158,8 +157,30 @@ class NLPProcessor:
         try:
             self.logger.info("Loading NLP models...")
 
+            import nltk
+            from nltk.sentiment.vader import SentimentIntensityAnalyzer
+            from nltk.corpus import stopwords
+            from nltk.tokenize import word_tokenize
+            from nltk.stem import WordNetLemmatizer
+            import sys
+
+            # Manual NLTK data path setup for PyInstaller frozen applications
+            if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+                nltk_data_path = os.path.join(sys._MEIPASS, 'nltk_data')
+                if not os.path.exists(nltk_data_path):
+                     # Fallback
+                    nltk_data_path = os.path.join(os.path.dirname(sys.executable), 'nltk_data')
+                nltk.data.path.append(nltk_data_path)
+                self.logger.info(f"NLTK data path set to: {nltk_data_path}")
+
+                self.logger.info(f"NLTK data path set to: {nltk_data_path}")
+
+            # Initialize NLTK components (downloads, stopwords, lemmatizer)
+            self._initialize_nltk()
+
             # For now, we're using rule-based approach
             # In future, this can be replaced with ML models
+            self.sentiment_analyzer = SentimentIntensityAnalyzer()
             self.models_loaded = True
             self._last_load_error = None
             self.logger.info("NLP models loaded successfully (rule-based)")

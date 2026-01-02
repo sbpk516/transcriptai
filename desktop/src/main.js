@@ -4,7 +4,54 @@ const { spawn } = require('child_process')
 const fs = require('fs')
 const http = require('http')
 const net = require('net')
-const { checkForUpdates, CHECK_INTERVAL_MS, getLatestManifest } = require('./main/update-checker')
+
+// --- Child Process Manager (Zombie Killer) ---
+class ChildProcessManager {
+  constructor() {
+    this.processes = []
+  }
+
+  spawn(command, args, name, options = {}) {
+    logLine('spawning_process', { name, command, args })
+    const p = spawn(command, args, options)
+
+    // Store reference
+    this.processes.push({ name, process: p, command })
+
+    // Logging hooks
+    if (p.stdout) p.stdout.on('data', d => logLine(name, 'stdout', d.toString().trim()))
+    if (p.stderr) p.stderr.on('data', d => logLine(name, 'stderr', d.toString().trim()))
+
+    p.on('exit', (code, signal) => {
+      logLine(name, 'exited', { code, signal })
+      // Remove from list if dead
+      this.processes = this.processes.filter(proc => proc.process !== p)
+    })
+
+    return p
+  }
+
+  killAll() {
+    logLine('killing_all_processes', this.processes.length)
+    this.processes.forEach(({ process, name }) => {
+      try {
+        logLine('killing', name)
+        process.kill('SIGTERM')
+        // Force kill backup
+        setTimeout(() => {
+          if (!process.killed) process.kill('SIGKILL')
+        }, 1000)
+      } catch (e) {
+        logLine('kill_error', name, e.message)
+      }
+    })
+    this.processes = []
+  }
+}
+
+const processManager = new ChildProcessManager()
+app.on('before-quit', () => processManager.killAll())
+
 const dictationSettings = require('./main/dictation-settings')
 const DictationManager = require('./main/dictation-manager')
 const recordingIndicatorWindow = require('./main/recording-indicator-window')
@@ -20,6 +67,17 @@ const HOMEBREW_BIN = '/opt/homebrew/bin'
 const USR_LOCAL_BIN = '/usr/local/bin'
 const withBrewPath = (p) => [HOMEBREW_BIN, USR_LOCAL_BIN, p || ''].filter(Boolean).join(':')
 
+// Helper: Find free port
+function getFreePort() {
+  return new Promise(resolve => {
+    const srv = net.createServer()
+    srv.listen(0, () => {
+      const port = srv.address().port
+      srv.close(() => resolve(port))
+    })
+  })
+}
+
 // Read frontend port from root config.js (best-effort)
 function getFrontendPort() {
   try {
@@ -30,11 +88,13 @@ function getFrontendPort() {
   return 3000
 }
 
-const isDev = !!(process.env.ELECTRON_START_URL || process.env.NODE_ENV === 'development')
+const isDev = !app.isPackaged
 const FRONTEND_PORT = getFrontendPort()
+const CHECK_INTERVAL_MS = 1000 * 60 * 15 // 15 minutes
 
 // Simple logger to file under userData
 function logLine(...args) {
+  console.log(...args); // Print to terminal
   try {
     const dir = path.join(app.getPath('userData'), 'logs')
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
@@ -45,10 +105,24 @@ function logLine(...args) {
 
 let backendInfo = { port: 8001, pid: null, mode: isDev ? 'dev' : 'prod' }
 let backendProcess = null
+let whisperServerProcess = null
+let WHISPER_PORT = 0; // Will be assigned dynamically
 let lastLoadTarget = ''
 let updateInterval = null
 let dictationSettingsReady = false
 let dictationManager = null
+
+/**
+ * Stub for auto-update check.
+ * TODO: Implement actual update checking via electron-updater if needed.
+ */
+async function checkForUpdates() {
+  if (isDev) {
+    logLine('update_check_skip', 'Skipping update check in dev mode')
+    return
+  }
+  logLine('update_check', 'Auto-update not configured (stub)')
+}
 
 async function triggerDictationWarmup(port) {
   return new Promise(resolve => {
@@ -219,28 +293,44 @@ async function findPort(candidates = [8001, 8011, 8021]) {
   })
 }
 
-function waitForHealth(port, { attempts = (isDev ? 20 : 60), delayMs = 500 } = {}) {
-  const url = `http://127.0.0.1:${port}/health`
+function waitForHealth(port, { attempts = (isDev ? 20 : 60), delayMs = 500, candidatePorts = null } = {}) {
+  // If candidatePorts provided, try each one (handles Python fallback to different port)
+  const portsToTry = candidatePorts || [port]
   let attempt = 0
   const startedAt = Date.now()
   return new Promise((resolve, reject) => {
     const tick = () => {
       attempt += 1
-      const req = http.get(url, res => {
-        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-          const elapsed = Date.now() - startedAt
-          logLine('health_ok', url, `attempt=${attempt}`, `elapsed_ms=${elapsed}`)
-          resolve(true)
-        } else {
-          res.resume()
-          if (attempt >= attempts) return reject(new Error('health_failed'))
-          setTimeout(tick, delayMs)
-        }
-      })
-      req.on('error', () => {
-        if (attempt >= attempts) return reject(new Error('health_failed'))
-        setTimeout(tick, delayMs)
-      })
+      let pending = portsToTry.length
+      let foundPort = null
+
+      for (const p of portsToTry) {
+        const url = `http://127.0.0.1:${p}/health`
+        const req = http.get(url, res => {
+          if (foundPort) { res.resume(); return }
+          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+            foundPort = p
+            const elapsed = Date.now() - startedAt
+            logLine('health_ok', url, `attempt=${attempt}`, `elapsed_ms=${elapsed}`)
+            resolve({ ok: true, port: p })
+          } else {
+            res.resume()
+            pending--
+            if (pending === 0 && !foundPort) {
+              if (attempt >= attempts) return reject(new Error('health_failed'))
+              setTimeout(tick, delayMs)
+            }
+          }
+        })
+        req.on('error', () => {
+          if (foundPort) return
+          pending--
+          if (pending === 0 && !foundPort) {
+            if (attempt >= attempts) return reject(new Error('health_failed'))
+            setTimeout(tick, delayMs)
+          }
+        })
+      }
     }
     tick()
   })
@@ -254,175 +344,236 @@ function dataDir() {
 async function startBackendDev() {
   const port = await findPort()
   backendInfo.port = port
-  const mlxVenvDev = path.resolve(__dirname, '..', '..', 'venv_mlx')
+
+  // Allocate Whisper Port
+  WHISPER_PORT = await getFreePort()
+  const LLAMA_PORT = await getFreePort()
+  logLine('allocated_ports', { whisper: WHISPER_PORT, llama: LLAMA_PORT })
+
+  // Spawn Whisper Server (C++)
+  const whisperBinary = path.join(__dirname, '../../backend-cpp/whisper-server')
+  const whisperModel = path.join(__dirname, '../../backend-cpp/models/ggml-base.en.bin')
+
+  if (fs.existsSync(whisperBinary) && fs.existsSync(whisperModel)) {
+    logLine('info', 'Spawning Whisper Server', { binary: whisperBinary, model: whisperModel, port: WHISPER_PORT })
+    // Spawn server with model and port
+    whisperServerProcess = processManager.spawn(whisperBinary, [
+      '-m', whisperModel,
+      '--port', String(WHISPER_PORT)
+    ], 'whisper-server')
+  } else {
+    logLine('warn', 'Whisper binary or model missing', { binary: whisperBinary, model: whisperModel })
+  }
+
+  // --- Feature: Test Bundled Backend in Dev Mode ---
+  if (process.env.FORCE_BUNDLED_BACKEND === '1') {
+    // We define env here because it's needed for the bundle spawn
+    const env = {
+      ...process.env,
+      PATH: withBrewPath(process.env.PATH),
+      TRANSCRIPTAI_MODE: 'desktop',
+      TRANSCRIPTAI_PORT: String(port),
+      TRANSCRIPTAI_DATA_DIR: dataDir(),
+      WHISPER_CPP_PORT: String(WHISPER_PORT),
+      LLAMA_CPP_PORT: String(LLAMA_PORT),
+      TRANSCRIPTAI_USE_MLX: '0',
+      TRANSCRIPTAI_LIVE_MIC: '1',
+      TRANSCRIPTAI_LIVE_TRANSCRIPTION: '1',
+    }
+
+    const bundlePath = path.join(__dirname, '../../backend/dist/transcriptai-backend', 'transcriptai-backend')
+    if (fs.existsSync(bundlePath)) {
+      logLine('spawn_backend_dev', 'FORCE_BUNDLED_BACKEND=1', bundlePath)
+      backendProcess = processManager.spawn(bundlePath, [], 'bundled-backend', {
+        env,
+        stdio: ['ignore', 'pipe', 'pipe']
+      })
+      backendInfo.pid = backendProcess.pid
+
+      let waitStart = Date.now()
+      try {
+        const candidatePorts = [port, 8001, 8011, 8021, 8031, 8041]
+        const healthResult = await waitForHealth(port, { candidatePorts })
+        const actualPort = healthResult.port || port
+        if (actualPort !== port) {
+          logLine('backend_port_fallback', { expected: port, actual: actualPort })
+          backendInfo.port = actualPort
+        }
+        logLine('backend_health_ready', { port: actualPort, elapsed_ms: Date.now() - waitStart })
+        await triggerDictationWarmup(actualPort)
+        return // Exit early since we spawned the bundle
+      } catch (e) {
+        logLine('backend_health_failed', e.message)
+        throw e
+      }
+    } else {
+      logLine('warn', 'FORCE_BUNDLED_BACKEND requested but binary not found', bundlePath)
+    }
+  }
+
+  // If we didn't exit early, we are running python source
   const env = {
     ...process.env,
     PATH: withBrewPath(process.env.PATH),
     TRANSCRIPTAI_MODE: 'desktop',
     TRANSCRIPTAI_PORT: String(port),
     TRANSCRIPTAI_DATA_DIR: dataDir(),
-    TRANSCRIPTAI_ENABLE_TRANSCRIPTION: '1',
-    TRANSCRIPTAI_LIVE_TRANSCRIPTION: '1',
+    WHISPER_CPP_PORT: String(WHISPER_PORT),
+    LLAMA_CPP_PORT: String(LLAMA_PORT),
+    TRANSCRIPTAI_USE_MLX: process.env.TRANSCRIPTAI_USE_MLX || '0',
     TRANSCRIPTAI_LIVE_MIC: '1',
-    // Batch-only live mic to ensure full transcript at stop()
-    TRANSCRIPTAI_LIVE_BATCH_ONLY: '1',
-    // Enable MLX-accelerated Whisper (3.25x faster on Apple Silicon)
-    TRANSCRIPTAI_USE_MLX: '1',
-    TRANSCRIPTAI_MLX_VENV: mlxVenvDev,
-    // File upload size limit (10 GB = 10737418240 bytes)
-    MAX_FILE_SIZE: '10737418240',
+    TRANSCRIPTAI_LIVE_TRANSCRIPTION: '1',
   }
-  const hfToken = process.env.HUGGINGFACE_HUB_TOKEN
-  if (hfToken) {
-    env.HUGGINGFACE_HUB_TOKEN = hfToken
-  }
+
   const cwd = path.join(__dirname, '..', '..', 'backend')
   const args = ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', String(port)]
-  logLine('spawn_backend_dev', JSON.stringify({ cwd, args, env: { TRANSCRIPTAI_MODE: env.TRANSCRIPTAI_MODE, TRANSCRIPTAI_PORT: env.TRANSCRIPTAI_PORT, TRANSCRIPTAI_DATA_DIR: env.TRANSCRIPTAI_DATA_DIR } }))
-  backendProcess = spawn(process.env.ELECTRON_PYTHON || 'python', args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] })
+
+  logLine('spawn_backend_dev', JSON.stringify({ cwd, args }))
+
+  backendProcess = processManager.spawn(process.env.ELECTRON_PYTHON || 'python', args, 'python-backend', {
+    cwd,
+    env,
+    stdio: ['ignore', 'pipe', 'pipe']
+  })
   backendInfo.pid = backendProcess.pid
 
-  // Collect all output for error diagnosis
-  let stdoutBuffer = ''
-  let stderrBuffer = ''
-
-  backendProcess.stdout.on('data', d => {
-    const output = String(d).trim()
-    stdoutBuffer += output + '\n'
-    logLine('backend_stdout', output)
-  })
-  backendProcess.stderr.on('data', d => {
-    const output = String(d).trim()
-    stderrBuffer += output + '\n'
-    logLine('backend_stderr', output)
-  })
-
-  // Handle process exit
-  backendProcess.on('exit', (code, signal) => {
-    logLine('backend_exit', { code, signal, pid: backendProcess.pid })
-    if (code !== 0 && code !== null) {
-      const errorMsg = `Backend process exited with code ${code}${signal ? ` (signal: ${signal})` : ''}`
-      logLine('backend_exit_error', {
-        error: errorMsg,
-        code,
-        signal,
-        stdout: stdoutBuffer.slice(-1000), // Last 1000 chars
-        stderr: stderrBuffer.slice(-1000)
-      })
-    }
-  })
-
+  // Wait for Health
   let waitStart = Date.now()
   try {
-    waitStart = Date.now()
-    await waitForHealth(port)
-    logLine('backend_health_ready', { port, elapsed_ms: Date.now() - waitStart })
-    await triggerDictationWarmup(port)
-  } catch (e) {
-    logLine('backend_health_failed', {
-      error: e.message,
-      elapsed_ms: Date.now() - waitStart,
-      stdout: stdoutBuffer.slice(-1000),
-      stderr: stderrBuffer.slice(-1000),
-      pid: backendProcess.pid
-    })
-    // Check if process is still running
-    try {
-      process.kill(backendProcess.pid, 0) // Check if process exists
-      logLine('backend_process_still_running', { pid: backendProcess.pid })
-    } catch (killErr) {
-      logLine('backend_process_dead', { pid: backendProcess.pid, error: killErr.message })
+    const candidatePorts = [port, 8001, 8011, 8021, 8031, 8041]
+    const healthResult = await waitForHealth(port, { candidatePorts })
+    const actualPort = healthResult.port || port
+    if (actualPort !== port) {
+      logLine('backend_port_fallback', { expected: port, actual: actualPort })
+      backendInfo.port = actualPort
     }
+    logLine('backend_health_ready', { port: actualPort, elapsed_ms: Date.now() - waitStart })
+    await triggerDictationWarmup(actualPort)
+  } catch (e) {
+    logLine('backend_health_failed', e.message)
     throw e
   }
 }
 
 async function startBackendProd() {
+  logLine('=== startBackendProd BEGIN ===')
+
   const port = await findPort()
   backendInfo.port = port
-  const resourcesVenv = path.join(process.resourcesPath, 'venv_mlx')
+  logLine('STEP 1: Backend port assigned', { port })
+
+  WHISPER_PORT = await getFreePort()
+  logLine('STEP 2: Whisper port assigned', { WHISPER_PORT })
+
+  const backendPath = path.join(process.resourcesPath, 'backend', 'transcriptai-backend', process.platform === 'win32' ? 'transcriptai-backend.exe' : 'transcriptai-backend')
+  const whisperPath = path.join(process.resourcesPath, 'whisper-server')
+  const whisperModelPath = path.join(process.resourcesPath, 'models', 'ggml-base.en.bin')
+
+  logLine('STEP 3: Paths resolved', {
+    resourcesPath: process.resourcesPath,
+    backendPath,
+    whisperPath,
+    whisperModelPath
+  })
+
+  // Check if files exist
+  const backendExists = fs.existsSync(backendPath)
+  const whisperExists = fs.existsSync(whisperPath)
+  const modelExists = fs.existsSync(whisperModelPath)
+  logLine('STEP 4: File existence check', { backendExists, whisperExists, modelExists })
+
+  // Launch whisper-server with model
+  if (whisperExists && modelExists) {
+    logLine('STEP 5: Starting whisper-server...')
+    whisperServerProcess = processManager.spawn(whisperPath, [
+      '-m', whisperModelPath,
+      '--port', String(WHISPER_PORT)
+    ], 'whisper-server')
+    logLine('STEP 5: whisper-server spawned', { pid: whisperServerProcess.pid })
+
+    // Wait for whisper-server to be ready (poll health endpoint)
+    logLine('STEP 6: Waiting for whisper-server health...')
+    const whisperReady = await waitForWhisperHealth(WHISPER_PORT, 30) // 30 second timeout
+    logLine('STEP 6: whisper-server health result', { ready: whisperReady })
+  } else {
+    logLine('STEP 5: SKIPPED - whisper-server files missing', { whisperExists, modelExists })
+  }
+
   const env = {
     ...process.env,
     PATH: withBrewPath(process.env.PATH),
     TRANSCRIPTAI_MODE: 'desktop',
     TRANSCRIPTAI_PORT: String(port),
     TRANSCRIPTAI_DATA_DIR: dataDir(),
-    TRANSCRIPTAI_ENABLE_TRANSCRIPTION: '1',
-    TRANSCRIPTAI_LIVE_TRANSCRIPTION: '1',
+    WHISPER_CPP_PORT: String(WHISPER_PORT),
+    WHISPER_CPP_MODEL: whisperModelPath,
+    TRANSCRIPTAI_USE_MLX: '0',
     TRANSCRIPTAI_LIVE_MIC: '1',
-    // Batch-only live mic to ensure full transcript at stop()
-    TRANSCRIPTAI_LIVE_BATCH_ONLY: '1',
-    // Ensure Whisper uses bundled cache for offline models
-    XDG_CACHE_HOME: path.join(process.resourcesPath, 'whisper_cache'),
-    // Enable MLX-accelerated Whisper (3.25x faster on Apple Silicon)
-    TRANSCRIPTAI_USE_MLX: '1',
-    TRANSCRIPTAI_MLX_VENV: resourcesVenv,
-    // File upload size limit (10 GB = 10737418240 bytes)
-    MAX_FILE_SIZE: '10737418240',
+    TRANSCRIPTAI_LIVE_TRANSCRIPTION: '1',
   }
-  const hfToken = process.env.HUGGINGFACE_HUB_TOKEN
-  if (hfToken) {
-    env.HUGGINGFACE_HUB_TOKEN = hfToken
-  }
-  const binName = process.platform === 'win32' ? 'transcriptai-backend.exe' : 'transcriptai-backend'
-  const binPath = path.join(process.resourcesPath, 'backend', 'transcriptai-backend', binName)
-  logLine('spawn_backend_prod', JSON.stringify({ binPath, env: { TRANSCRIPTAI_MODE: env.TRANSCRIPTAI_MODE, TRANSCRIPTAI_PORT: env.TRANSCRIPTAI_PORT, TRANSCRIPTAI_DATA_DIR: env.TRANSCRIPTAI_DATA_DIR } }))
-  backendProcess = spawn(binPath, [], { env, stdio: ['ignore', 'pipe', 'pipe'] })
+
+  logLine('STEP 7: Environment vars for Python backend', {
+    TRANSCRIPTAI_MODE: env.TRANSCRIPTAI_MODE,
+    TRANSCRIPTAI_PORT: env.TRANSCRIPTAI_PORT,
+    TRANSCRIPTAI_DATA_DIR: env.TRANSCRIPTAI_DATA_DIR,
+    WHISPER_CPP_PORT: env.WHISPER_CPP_PORT,
+    WHISPER_CPP_MODEL: env.WHISPER_CPP_MODEL,
+    TRANSCRIPTAI_USE_MLX: env.TRANSCRIPTAI_USE_MLX
+  })
+
+  logLine('STEP 8: Starting Python backend...', { backendPath })
+  backendProcess = processManager.spawn(backendPath, [], 'python-backend', { env })
   backendInfo.pid = backendProcess.pid
+  logLine('STEP 8: Python backend spawned', { pid: backendProcess.pid })
 
-  // Collect all output for error diagnosis
-  let stdoutBuffer = ''
-  let stderrBuffer = ''
-
-  backendProcess.stdout.on('data', d => {
-    const output = String(d).trim()
-    stdoutBuffer += output + '\n'
-    logLine('backend_stdout', output)
-  })
-  backendProcess.stderr.on('data', d => {
-    const output = String(d).trim()
-    stderrBuffer += output + '\n'
-    logLine('backend_stderr', output)
-  })
-
-  // Handle process exit
-  backendProcess.on('exit', (code, signal) => {
-    logLine('backend_exit', { code, signal, pid: backendProcess.pid })
-    if (code !== 0 && code !== null) {
-      const errorMsg = `Backend process exited with code ${code}${signal ? ` (signal: ${signal})` : ''}`
-      logLine('backend_exit_error', {
-        error: errorMsg,
-        code,
-        signal,
-        stdout: stdoutBuffer.slice(-1000),
-        stderr: stderrBuffer.slice(-1000)
-      })
-    }
-  })
-
+  logLine('STEP 9: Waiting for Python backend health...')
   let waitStart = Date.now()
   try {
-    waitStart = Date.now()
-    await waitForHealth(port)
-    logLine('backend_health_ready', { port, elapsed_ms: Date.now() - waitStart })
-    await triggerDictationWarmup(port)
-  } catch (e) {
-    logLine('backend_health_failed', {
-      error: e.message,
-      elapsed_ms: Date.now() - waitStart,
-      stdout: stdoutBuffer.slice(-1000),
-      stderr: stderrBuffer.slice(-1000),
-      pid: backendProcess.pid
-    })
-    // Check if process is still running
-    try {
-      process.kill(backendProcess.pid, 0) // Check if process exists
-      logLine('backend_process_still_running', { pid: backendProcess.pid })
-    } catch (killErr) {
-      logLine('backend_process_dead', { pid: backendProcess.pid, error: killErr.message })
+    const candidatePorts = [port, 8001, 8011, 8021, 8031, 8041]
+    const healthResult = await waitForHealth(port, { candidatePorts })
+    const actualPort = healthResult.port || port
+    if (actualPort !== port) {
+      logLine('STEP 9: Python backend port fallback', { expected: port, actual: actualPort })
+      backendInfo.port = actualPort
     }
+    logLine('STEP 9: Python backend ready', { port: actualPort, elapsed_ms: Date.now() - waitStart })
+  } catch (e) {
+    logLine('STEP 9: Python backend health FAILED', { error: e.message, elapsed_ms: Date.now() - waitStart })
     throw e
   }
+
+  logLine('=== startBackendProd END ===')
+}
+
+// Helper to wait for whisper-server health
+async function waitForWhisperHealth(port, timeoutSec = 30) {
+  const startTime = Date.now()
+  const maxTime = timeoutSec * 1000
+
+  while (Date.now() - startTime < maxTime) {
+    try {
+      const response = await new Promise((resolve, reject) => {
+        const req = http.get(`http://127.0.0.1:${port}/health`, { timeout: 1000 }, res => {
+          let data = ''
+          res.on('data', chunk => data += chunk)
+          res.on('end', () => resolve({ status: res.statusCode, data }))
+        })
+        req.on('error', reject)
+        req.on('timeout', () => { req.destroy(); reject(new Error('timeout')) })
+      })
+
+      if (response.status === 200) {
+        logLine('whisper_health_success', { port, elapsed_ms: Date.now() - startTime, response: response.data })
+        return true
+      }
+    } catch (e) {
+      // Not ready yet, keep polling
+    }
+    await new Promise(r => setTimeout(r, 500)) // Poll every 500ms
+  }
+
+  logLine('whisper_health_timeout', { port, elapsed_ms: Date.now() - startTime })
+  return false
 }
 
 let mainWindow = null
@@ -453,8 +604,17 @@ async function createMainWindow() {
   })
 
   const devUrl = `http://localhost:${FRONTEND_PORT}`
-  const prodIndex = path.join(process.resourcesPath, 'frontend_dist', 'index.html')
-  const loadTarget = isDev ? devUrl : `file://${prodIndex}`
+
+  // If forcing bundled backend, we typically want to test the full bundled experience (static files)
+  const forceBundle = process.env.FORCE_BUNDLED_BACKEND === '1'
+
+  let prodIndex = path.join(process.resourcesPath, 'frontend_dist', 'index.html')
+  if (isDev && forceBundle) {
+    // In simulation mode, point to the actual local build folder
+    prodIndex = path.join(__dirname, '../../frontend/dist/index.html')
+  }
+
+  const loadTarget = (isDev && !forceBundle) ? devUrl : `file://${prodIndex}`
   lastLoadTarget = loadTarget
 
   mainWindow.once('ready-to-show', () => mainWindow && mainWindow.show())
@@ -520,6 +680,18 @@ function createAppMenu() {
       ]
     },
     {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' }
+      ]
+    },
+    {
       label: 'View',
       submenu: [
         ...(isDev ? [{ role: 'toggleDevTools' }] : []),
@@ -566,14 +738,24 @@ app.on('ready', async () => {
     logLine('dictation_settings_load_error', error.message)
   }
 
-  let dictationManagerSyncStartTime = Date.now()
-  if (initialDictationSettings) {
-    await syncDictationManager(initialDictationSettings)
-  } else {
-    await syncDictationManager({ enabled: false })
-  }
-  const dictationManagerSyncElapsed = Date.now() - dictationManagerSyncStartTime
-  logLine('[LAUNCH] phase=dictation_manager_sync elapsed=' + dictationManagerSyncElapsed + 'ms')
+
+  // Fire dictation sync in background (don't block startup)
+  // This previously took 9-109 seconds - now runs in parallel
+  const dictationSyncPromise = (async () => {
+    const dictationManagerSyncStartTime = Date.now()
+    try {
+      if (initialDictationSettings) {
+        await syncDictationManager(initialDictationSettings)
+      } else {
+        await syncDictationManager({ enabled: false })
+      }
+      const dictationManagerSyncElapsed = Date.now() - dictationManagerSyncStartTime
+      logLine('[LAUNCH] phase=dictation_manager_sync elapsed=' + dictationManagerSyncElapsed + 'ms')
+    } catch (err) {
+      logLine('[LAUNCH] phase=dictation_manager_sync error=' + err.message)
+    }
+  })()
+
   const manager = getDictationManager()
   manager.on('dictation:press-start', payload => {
     logLine('dictation_event_start', payload)

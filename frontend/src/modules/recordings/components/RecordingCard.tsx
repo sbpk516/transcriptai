@@ -23,10 +23,11 @@ export const RecordingCard: React.FC<RecordingCardProps> = ({
     details,
     loadingDetails,
     onReanalyze,
-    isReanalyzing
+    isReanalyzing,
 }) => {
     const [localExpanded, setLocalExpanded] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [formattingEnabled, setFormattingEnabled] = useState(true);
 
     const isExpanded = controlledExpanded !== undefined ? controlledExpanded : localExpanded;
 
@@ -37,30 +38,6 @@ export const RecordingCard: React.FC<RecordingCardProps> = ({
             case 'uploaded': return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
             case 'failed': return 'bg-red-500/10 text-red-400 border-red-500/20';
             default: return 'bg-slate-500/10 text-slate-400 border-slate-500/20';
-        }
-    };
-
-    const getStatusIcon = (status: string) => {
-        switch (status.toLowerCase()) {
-            case 'completed':
-                return (
-                    <svg className="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                );
-            case 'processing':
-                return (
-                    <svg className="w-3 h-3 mr-1 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                );
-            case 'failed':
-                return (
-                    <svg className="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                );
-            default: return null;
         }
     };
 
@@ -130,10 +107,28 @@ export const RecordingCard: React.FC<RecordingCardProps> = ({
                     </div>
 
                     <div className="flex items-center gap-2">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${getStatusColor(call.status)}`}>
-                            {getStatusIcon(call.status)}
-                            {call.status.toUpperCase()}
-                        </span>
+
+
+                        {/* Copy Button */}
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (details?.transcription?.transcription_text) {
+                                    navigator.clipboard.writeText(details.transcription.transcription_text);
+                                } else if (onExpand) {
+                                    // If not loaded, expand first
+                                    onExpand(call.call_id);
+                                    // Just a hint, actual copy relies on details being there
+                                }
+                            }}
+                            title="Copy Transcript"
+                            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                                <path fillRule="evenodd" d="M13.887 3.182c.396.037.79.08 1.183.128C16.194 3.45 17 4.414 17 5.517V16.75A2.25 2.25 0 0114.75 19h-9.5A2.25 2.25 0 013 16.75V5.517c0-1.103.806-2.068 1.93-2.207.393-.048.787-.09 1.183-.128A3.001 3.001 0 019 1h2c1.373 0 2.531.923 2.887 2.182zM7.5 4A1.5 1.5 0 019 2.5h2A1.5 1.5 0 0112.5 4v.5h-5V4z" clipRule="evenodd" />
+                            </svg>
+                        </button>
+
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
@@ -167,7 +162,67 @@ export const RecordingCard: React.FC<RecordingCardProps> = ({
                             </div>
                         ) : (
                             <div className="space-y-4">
-                                {/* Reanalyze Action */}
+                                {/* Toolbar (Matches Design) */}
+                                <div className="flex flex-wrap items-center justify-between gap-3 p-2 bg-slate-900/50 rounded-lg border border-white/5">
+                                    <div className="flex items-center gap-1 bg-slate-800/80 rounded-lg p-1 border border-white/5">
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); setFormattingEnabled(false); }}
+                                            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${!formattingEnabled ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+                                        >
+                                            Plain
+                                        </button>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); setFormattingEnabled(true); }}
+                                            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${formattingEnabled ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+                                        >
+                                            Formatted
+                                        </button>
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                const text = details?.transcription?.transcription_text;
+                                                if (text) {
+                                                    navigator.clipboard.writeText(text);
+                                                    // Visual feedback handled by button state or toast usually,
+                                                    // but for now we'll just rely on the click.
+                                                }
+                                            }}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                                                <path fillRule="evenodd" d="M13.887 3.182c.396.037.79.08 1.183.128C16.194 3.45 17 4.414 17 5.517V16.75A2.25 2.25 0 0114.75 19h-9.5A2.25 2.25 0 013 16.75V5.517c0-1.103.806-2.068 1.93-2.207.393-.048.787-.09 1.183-.128A3.001 3.001 0 019 1h2c1.373 0 2.531.923 2.887 2.182zM7.5 4A1.5 1.5 0 019 2.5h2A1.5 1.5 0 0112.5 4v.5h-5V4z" clipRule="evenodd" />
+                                            </svg>
+                                            Copy
+                                        </button>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                const text = details?.transcription?.transcription_text;
+                                                if (text) {
+                                                    const blob = new Blob([text], { type: 'text/plain' });
+                                                    const url = URL.createObjectURL(blob);
+                                                    const a = document.createElement('a');
+                                                    a.href = url;
+                                                    a.download = `${call.original_filename || 'transcript'}.txt`;
+                                                    a.click();
+                                                    URL.revokeObjectURL(url);
+                                                }
+                                            }}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                                                <path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z" />
+                                                <path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" />
+                                            </svg>
+                                            Download
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Reanalyze Action (Moved below toolbar if needed, or kept) */}
                                 <div className="flex justify-end">
                                     <button
                                         onClick={(e) => {
@@ -191,8 +246,12 @@ export const RecordingCard: React.FC<RecordingCardProps> = ({
                                         Loading details...
                                     </div>
                                 ) : details?.transcription?.transcription_text ? (
-                                    <div className="prose prose-invert prose-sm max-w-none text-slate-300">
-                                        <p className="whitespace-pre-wrap leading-relaxed">{details.transcription.transcription_text}</p>
+                                    <div className="bg-slate-900/30 rounded-xl p-4 border border-white/5 font-mono text-sm leading-relaxed text-slate-300 max-h-[400px] overflow-y-auto custom-scrollbar">
+                                        {formattingEnabled ? (
+                                            <FormattedText text={details.transcription.transcription_text} />
+                                        ) : (
+                                            <p className="whitespace-pre-wrap">{details.transcription.transcription_text}</p>
+                                        )}
                                     </div>
                                 ) : (
                                     <p className="text-sm text-slate-500 italic">No transcript available.</p>
@@ -259,6 +318,7 @@ export const RecordingCard: React.FC<RecordingCardProps> = ({
     );
 };
 
+
 function LiveTranscript({ callId }: { callId: string }) {
     const { text, completed, error, progress } = useTranscriptionStream(callId);
     return (
@@ -275,3 +335,19 @@ function LiveTranscript({ callId }: { callId: string }) {
         </div>
     );
 }
+
+import { formatTranscript } from '../../../utils/transcript';
+
+const FormattedText: React.FC<{ text: string }> = ({ text }) => {
+    const paragraphs = formatTranscript(text, { sentencesPerParagraph: 3, preserveExistingNewlines: true });
+    return (
+        <div className="space-y-4">
+            {paragraphs.map((p, i) => (
+                <p key={i} className="text-slate-300 leading-relaxed font-sans text-base">
+                    {p}
+                </p>
+            ))}
+        </div>
+    );
+};
+

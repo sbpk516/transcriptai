@@ -117,19 +117,26 @@ BACKEND_BIN="$ROOT_DIR/backend/bin/transcriptai-backend/transcriptai-backend"
 # Alternative: We will try to run the backend binary in background, wait 5s, check if it's still running.
 # If it crashed (exit code != 0 or process gone), verification failed.
 
-echo "Running smoke test on backend binary..."
-TRANSCRIPTAI_MODE="test" "$BACKEND_BIN" &
-PID=$!
-sleep 5
-if ps -p $PID > /dev/null; then
-   echo -e "${GREEN}✓${NC} Backend binary started and stayed running (PID $PID)"
-   kill $PID || true
+if [[ "${SKIP_BACKEND_SMOKE_TEST:-0}" == "1" ]]; then
+    echo -e "${YELLOW}⚠${NC} Skipping backend smoke test (SKIP_BACKEND_SMOKE_TEST=1)"
 else
-   echo -e "${RED}✗${NC} Backend binary crashed immediately!"
-   wait $PID
-   EXIT_CODE=$?
-   echo "Exit code: $EXIT_CODE"
-   exit 1
+    echo "Running smoke test on backend binary..."
+    # Use desktop mode + workspace data dir to avoid external DB dependencies.
+    SMOKE_DATA_DIR="$ROOT_DIR/backend/build/smoke-data"
+    mkdir -p "$SMOKE_DATA_DIR"
+    TRANSCRIPTAI_MODE="desktop" TRANSCRIPTAI_DATA_DIR="$SMOKE_DATA_DIR" "$BACKEND_BIN" &
+    PID=$!
+    sleep 5
+    if kill -0 $PID > /dev/null 2>&1; then
+       echo -e "${GREEN}✓${NC} Backend binary started and stayed running (PID $PID)"
+       kill $PID || true
+    else
+       echo -e "${RED}✗${NC} Backend binary crashed immediately!"
+       wait $PID
+       EXIT_CODE=$?
+       echo "Exit code: $EXIT_CODE"
+       exit 1
+    fi
 fi
 
 # Check frontend build

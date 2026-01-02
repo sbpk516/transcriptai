@@ -46,6 +46,10 @@ app = FastAPI(
 
 app.include_router(dictation_router, prefix="/api/v1")
 app.include_router(models.router, prefix="/api/v1")
+# Phase 2: YouTube Integration
+from .api.endpoints import youtube
+app.include_router(youtube.router, prefix="/api/v1/youtube", tags=["YouTube"])
+
 
 # Add CORS middleware (for future frontend)
 app.add_middleware(
@@ -590,7 +594,7 @@ async def live_chunk(session_id: str, file: UploadFile = File(...)):
                 # We should subtract the header text to avoid duplication in frontend.
                 text_to_emit = full_text
                 if idx > 0:
-                    header_text = live_sessions.partials[0] if len(live_sessions.partials) > 0 else ""
+                    header_text = sess.partials[0] if len(sess.partials) > 0 else ""
                     if header_text and full_text.startswith(header_text):
                         text_to_emit = full_text[len(header_text):].strip()
                     # Fallback: if heuristics fail, just stick with full_text (or try overlap detection - kept simple for now)

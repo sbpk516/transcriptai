@@ -8,11 +8,24 @@ import type { AppTab, UpdateBridge, UpdateManifest } from '../../types'
 
 const Layout: React.FC = () => {
   console.log('[LAYOUT] Component rendering...')
-  
+
   const [activePage, setActivePage] = useState<AppTab>('capture')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [updateInfo, setUpdateInfo] = useState<UpdateManifest | null>(null)
   const [dismissedVersion, setDismissedVersion] = useState<string | null>(null)
+  const [chatContext, setChatContext] = useState<{ transcriptId: string; filename: string } | null>(null)
+
+  useEffect(() => {
+    // Listen for navigation requests from children
+    const handleNav = (e: CustomEvent<{ page: AppTab; context?: any }>) => {
+      console.log('[LAYOUT] Navigation request:', e.detail)
+
+      setActivePage(e.detail.page)
+    }
+
+    window.addEventListener('transcriptai:navigate' as any, handleNav as any)
+    return () => window.removeEventListener('transcriptai:navigate' as any, handleNav as any)
+  }, [])
 
   useEffect(() => {
     const bridge = (window as typeof window & { transcriptaiUpdates?: UpdateBridge }).transcriptaiUpdates
@@ -71,8 +84,8 @@ const Layout: React.FC = () => {
       default:
         return <Capture />
     }
-  }, [activePage])
-  
+  }, [activePage, chatContext])
+
   return (
     <div className="app-shell bg-hero-gradient text-slate-100">
       <div className="app-surface min-h-screen flex flex-col">
@@ -87,8 +100,8 @@ const Layout: React.FC = () => {
         />
         <DictationOverlay />
         <div className="flex flex-1 gap-6 px-4 pb-8 lg:px-8">
-          <Sidebar 
-            isOpen={sidebarOpen} 
+          <Sidebar
+            isOpen={sidebarOpen}
             onToggle={() => setSidebarOpen(!sidebarOpen)}
             activePage={activePage}
             onPageChange={setActivePage}

@@ -8,6 +8,7 @@ export const RecordingsView: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
+    const [searchQuery, setSearchQuery] = useState('');
 
     // Detail view state
     const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -90,6 +91,15 @@ export const RecordingsView: React.FC = () => {
         return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
     });
 
+    const filteredCalls = sortedCalls.filter(call => {
+        if (!searchQuery) return true;
+        const query = searchQuery.toLowerCase();
+        return (call.original_filename || call.call_id).toLowerCase().includes(query) ||
+            call.status.toLowerCase().includes(query);
+    });
+
+
+
     const stats = {
         total: calls.length,
         completed: calls.filter(c => c.status === 'completed').length,
@@ -123,10 +133,24 @@ export const RecordingsView: React.FC = () => {
                     </div>
                 </div>
 
+                {/* Search Bar */}
+                <div className="mb-6 relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <span className="text-slate-500">🔍</span>
+                    </div>
+                    <input
+                        type="text"
+                        placeholder="Search transcripts..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full rounded-xl border border-white/5 bg-slate-900/50 pl-10 pr-4 py-3 text-sm text-slate-200 placeholder-slate-500 focus:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 transition-all backdrop-blur-sm"
+                    />
+                </div>
+
                 {/* Toolbar */}
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2 text-sm font-medium text-blue-400">
-                        <span>Transcripts ({calls.length})</span>
+                        <span>Transcripts ({filteredCalls.length})</span>
                     </div>
 
                     <div className="flex items-center gap-4">
@@ -174,7 +198,7 @@ export const RecordingsView: React.FC = () => {
                         <p className="text-xs mt-1">Start a new capture to see it here.</p>
                     </div>
                 ) : (
-                    sortedCalls.map(call => (
+                    filteredCalls.map(call => (
                         <RecordingCard
                             key={call.call_id}
                             call={call}
@@ -185,6 +209,7 @@ export const RecordingsView: React.FC = () => {
                             loadingDetails={loadingDetails[call.call_id]}
                             onReanalyze={handleReanalyze}
                             isReanalyzing={reanalyzing[call.call_id]}
+
                         />
                     ))
                 )}

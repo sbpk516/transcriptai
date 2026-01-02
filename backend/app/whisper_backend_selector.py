@@ -96,7 +96,7 @@ def get_global_whisper_processor(model_name: str = "tiny"):
             return _current_processor
 
         # Determine model name
-        final_model_name = "tiny"
+        final_model_name = "base"
         try:
             pref_path = get_model_preference_path()
             if pref_path.exists():

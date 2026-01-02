@@ -29,11 +29,11 @@ import { Button, Card } from '../components/Shared'
 // We'll add API call to fetch transcripts from backend
 
 const Transcripts: React.FC = () => {
-// STEP 2: Add state for API transcripts
+  // STEP 2: Add state for API transcripts
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<any[]>([])
   const [error, setError] = useState<string | null>(null)
-  
+
   // Detail view (lazy-loaded per call)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null)
@@ -50,16 +50,16 @@ const Transcripts: React.FC = () => {
   const [copied, setCopied] = useState<boolean>(false)
   // Sort toggle (newest/oldest)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
-  
+
   console.log('[TRANSCRIPTS] Component rendering - Step 2 with API integration')
-  
+
   // STEP 2: Add API call function
   const fetchResults = async () => {
     try {
       console.log('[TRANSCRIPTS] 🚀 Starting API call to fetch transcripts')
       setLoading(true)
       setError(null)
-      
+
       // Call the backend API endpoint using shared API client (respects base URL)
       const params = new URLSearchParams()
       params.append('sort', 'created_at')
@@ -68,18 +68,18 @@ const Transcripts: React.FC = () => {
       console.log('[TRANSCRIPTS] 🔎 Fetch URL:', url)
       const { data } = await apiClient.get(url)
       console.log('[TRANSCRIPTS] 📥 API Response received:', data)
-      
+
       // Extract results from response
       const resultsData = data.data?.results || []
       setResults(resultsData)
-  console.log('[TRANSCRIPTS] ✅ Transcripts loaded:', resultsData.length, 'items')
+      console.log('[TRANSCRIPTS] ✅ Transcripts loaded:', resultsData.length, 'items')
       console.log('[TRANSCRIPTS] 📊 Full response structure:', data)
       if (resultsData.length > 0) {
         const first = resultsData[0]?.created_at || null
         const last = resultsData[resultsData.length - 1]?.created_at || null
         console.log('[TRANSCRIPTS] 🧭 Order check (created_at):', { direction: sortDirection, first, last })
       }
-      
+
     } catch (err) {
       console.error('[TRANSCRIPTS] ❌ API call failed:', err)
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch transcripts'
@@ -88,7 +88,7 @@ const Transcripts: React.FC = () => {
       setLoading(false)
     }
   }
-  
+
   const fetchResultDetail = async (callId: string) => {
     try {
       setDetailLoadingId(callId)
@@ -128,14 +128,26 @@ const Transcripts: React.FC = () => {
       setReanalyzingId(null)
     }
   }
-  
+
   // Load transcripts when component mounts and when sort changes
   useEffect(() => {
     console.log('[TRANSCRIPTS] 🔄 Fetching transcripts with sort direction:', sortDirection)
     fetchResults()
   }, [sortDirection])
-  
-  const transcriptCount = results.length
+
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('')
+
+  // Filter results based on search
+  const filteredResults = results.filter(r => {
+    if (!searchQuery) return true
+    const query = searchQuery.toLowerCase()
+    const filename = (r.file_info?.original_filename || r.call_id).toLowerCase()
+    // We can also search cached transcript text if available, but for now filename + status is good
+    return filename.includes(query) || r.status.toLowerCase().includes(query)
+  })
+
+  const transcriptCount = filteredResults.length
 
   return (
     <div className="space-y-8">
@@ -151,6 +163,7 @@ const Transcripts: React.FC = () => {
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
+            {/* Global Actions */}
             <Button variant="ghost" size="sm" onClick={fetchResults} disabled={loading}>
               {loading ? 'Refreshing…' : 'Refresh'}
             </Button>
@@ -194,10 +207,25 @@ const Transcripts: React.FC = () => {
             </Button>
           </div>
         </div>
+
+        {/* Search Bar - Matches User Design */}
+        <div className="mt-8 relative">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <span className="text-white/40">🔍</span>
+          </div>
+          <input
+            type="text"
+            placeholder="Search transcripts, files, or content..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full rounded-xl border border-white/10 bg-black/20 pl-10 pr-4 py-3 text-sm text-white placeholder-white/30 focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400 transition-all backdrop-blur-sm"
+          />
+        </div>
+
         <div className="mt-6 grid gap-3 sm:grid-cols-3 text-center text-xs uppercase tracking-[0.3em] text-white/70">
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <p className="text-2xl font-semibold text-white">{transcriptCount}</p>
-            <p>Records</p>
+            <p className="text-2xl font-semibold text-white">{results.length}</p>
+            <p>Total</p>
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
             <p className="text-2xl font-semibold text-emerald-300">
@@ -219,7 +247,7 @@ const Transcripts: React.FC = () => {
           <p className="mt-4 text-sm">Loading transcripts from the backend…</p>
         </div>
       )}
-      
+
       {error && (
         <div className="glass-surface rounded-2xl border border-rose-500/30 px-5 py-4 text-sm text-rose-100 shadow-glow-pink">
           <div className="flex items-center gap-3">
@@ -242,12 +270,12 @@ const Transcripts: React.FC = () => {
           </div>
         </div>
       )}
-      
+
       {!loading && !error && (
         <div className="space-y-4">
           <Card
             title={`Transcripts (${transcriptCount})`}
-            subtitle="Capture new audio and refresh to sync the latest entries."
+            subtitle={searchQuery ? `Showing results for "${searchQuery}"` : "Capture new audio and refresh to sync the latest entries."}
             icon="📡"
           >
             <div className="flex flex-wrap items-center justify-between gap-4 text-sm text-white/70">
@@ -265,15 +293,15 @@ const Transcripts: React.FC = () => {
             </div>
           </Card>
 
-          {results.length === 0 ? (
-            <Card title="No Transcripts" subtitle="Capture or upload audio to populate this view." icon="📭">
+          {filteredResults.length === 0 ? (
+            <Card title="No Transcripts Found" subtitle={searchQuery ? "Try adjusting your search query." : "Capture or upload audio to populate this view."} icon="📭">
               <p className="text-sm text-white/70">
-                Once you complete a capture, transcripts appear here instantly.
+                {searchQuery ? "No matches found." : "Once you complete a capture, transcripts appear here instantly."}
               </p>
             </Card>
           ) : (
             <div className="space-y-4">
-              {results.map((result) => {
+              {filteredResults.map((result) => {
                 const status = result.status || 'unknown'
                 const statusStyles =
                   status === 'completed'
@@ -315,16 +343,51 @@ const Transcripts: React.FC = () => {
                         )}
                       </div>
                       <div className="flex flex-wrap gap-2">
+
+
+                        {/* Secondary Action: View */}
                         <Button
                           variant="secondary"
                           size="sm"
                           onClick={() => onToggleDetails(result.call_id)}
                         >
-                          {expandedId === result.call_id ? 'Hide details' : 'Show transcript'}
+                          {expandedId === result.call_id ? 'Hide' : '📄 View'}
                         </Button>
+
+                        {/* Utility Action: Copy (Simulated for list view) */}
                         <Button
                           variant="ghost"
                           size="sm"
+                          title="Copy Transcript"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              // Optimization: If we have it in cache, copy immediately. 
+                              // If not, we might need to fetch. For now, trigger fetch if needed.
+                              if (!detailsCache[result.call_id]) {
+                                await fetchResultDetail(result.call_id)
+                              }
+                              const text = detailsCache[result.call_id]?.transcription?.transcription_text
+                              if (text) {
+                                await navigator.clipboard.writeText(text)
+                                alert("Transcript copied to clipboard!")
+                              } else {
+                                // Trigger expand to load if not loaded
+                                onToggleDetails(result.call_id)
+                              }
+                            } catch (err) {
+                              console.error("Copy failed", err)
+                            }
+                          }}
+                        >
+                          📋
+                        </Button>
+
+                        {/* Destructive Action: Delete */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="opacity-50 hover:opacity-100 hover:bg-rose-500/20 hover:text-rose-200"
                           onClick={async () => {
                             if (!confirm('Delete this result permanently?')) return
                             try {
@@ -332,12 +395,6 @@ const Transcripts: React.FC = () => {
                               setDeleteErrors(prev => ({ ...prev, [result.call_id]: '' }))
                               await deleteResult(result.call_id)
                               setResults(prev => prev.filter(r => r.call_id !== result.call_id))
-                              setExpandedId(prev => (prev === result.call_id ? null : prev))
-                              setDetailsCache(prev => {
-                                const copy = { ...prev }
-                                delete copy[result.call_id]
-                                return copy
-                              })
                             } catch (err) {
                               const msg = err instanceof Error ? err.message : 'Failed to delete result'
                               setDeleteErrors(prev => ({ ...prev, [result.call_id]: msg }))
@@ -347,7 +404,7 @@ const Transcripts: React.FC = () => {
                           }}
                           disabled={deletingId === result.call_id}
                         >
-                          {deletingId === result.call_id ? 'Deleting…' : 'Delete'}
+                          ⋮
                         </Button>
                       </div>
                     </div>
@@ -424,10 +481,10 @@ const Transcripts: React.FC = () => {
                                         ''
                                       const text = formattingOn
                                         ? (formatTranscript(raw, {
-                                            sentencesPerParagraph,
-                                            preserveExistingNewlines: true,
-                                          }) || []
-                                          ).join('\n\n')
+                                          sentencesPerParagraph,
+                                          preserveExistingNewlines: true,
+                                        }) || []
+                                        ).join('\n\n')
                                         : raw
                                       if (navigator.clipboard?.writeText) {
                                         await navigator.clipboard.writeText(text)
@@ -451,10 +508,10 @@ const Transcripts: React.FC = () => {
                                         ''
                                       const text = formattingOn
                                         ? (formatTranscript(raw, {
-                                            sentencesPerParagraph,
-                                            preserveExistingNewlines: true,
-                                          }) || []
-                                          ).join('\n\n')
+                                          sentencesPerParagraph,
+                                          preserveExistingNewlines: true,
+                                        }) || []
+                                        ).join('\n\n')
                                         : raw
                                       const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
                                       const url = URL.createObjectURL(blob)
@@ -531,9 +588,9 @@ const Transcripts: React.FC = () => {
           )}
         </div>
       )}
-      
+
       {/* Pagination Info removed (debug helper) */}
-      
+
       {/* Debug Information removed */}
     </div>
   )

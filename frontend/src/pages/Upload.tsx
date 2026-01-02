@@ -36,7 +36,7 @@ const Capture: React.FC = () => {
 
   // LocalStorage functions for state persistence
   const STORAGE_KEY = 'transcriptai_upload_files'
-  
+
   const saveFilesToStorage = useCallback((files: UploadFile[]) => {
     try {
       // Filter out File objects (can't be serialized)
@@ -57,26 +57,26 @@ const Capture: React.FC = () => {
       if (stored) {
         const files = JSON.parse(stored)
         const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
-        
+
         // Keep only recent files or processing files
         const filteredFiles = files.filter((f: UploadFile) => {
           // Always keep processing files
           if (f.status === 'processing') return true
-          
+
           // Keep completed files that are less than 24 hours old
           if (f.uploadedAt && new Date(f.uploadedAt) > oneDayAgo) return true
-          
+
           // Remove old completed files
           return false
         })
-        
+
         // Update storage if we filtered out any files
         if (filteredFiles.length !== files.length) {
           const removedCount = files.length - filteredFiles.length
           console.log(`[CAPTURE] Cleaned up ${removedCount} old files from storage`)
           localStorage.setItem(STORAGE_KEY, JSON.stringify(filteredFiles))
         }
-        
+
         console.log(`[CAPTURE] Loaded ${filteredFiles.length} files from storage`)
         return filteredFiles
       }
@@ -121,19 +121,19 @@ const Capture: React.FC = () => {
     const modelStatusStartTime = performance.now()
     const modelStatusStartTimestamp = new Date().toISOString()
     console.log('[MODEL_STATUS] phase=health_check_start timestamp=' + modelStatusStartTimestamp)
-    
+
     try {
       const requestStartTime = performance.now()
       const requestStartTimestamp = new Date().toISOString()
       console.log('[MODEL_STATUS] phase=api_request_start timestamp=' + requestStartTimestamp)
-      
+
       const response = await apiClient.get('/health')
-      
+
       const responseReceivedTime = performance.now()
       const responseReceivedTimestamp = new Date().toISOString()
       const requestElapsed = responseReceivedTime - requestStartTime
       console.log('[MODEL_STATUS] phase=api_response_received timestamp=' + responseReceivedTimestamp + ' elapsed=' + requestElapsed.toFixed(2) + 'ms')
-      
+
       const parseStartTime = performance.now()
       const models = response.data?.models ?? {}
       const whisperStatus = models.whisper?.status as string | undefined
@@ -175,7 +175,8 @@ const Capture: React.FC = () => {
       console.error('[MODEL_STATUS] phase=error elapsed=' + totalElapsed.toFixed(2) + 'ms error=', error)
       console.error('[CAPTURE] Failed to fetch health status', error)
       setModelStatus('unknown')
-      setModelStatusMessage('Checking speech model status…')
+      const errorMsg = (error as any)?.message || 'Unknown error'
+      setModelStatusMessage(`Error checking speech model status: ${errorMsg}`)
       return 'unknown'
     }
   }, [])
@@ -202,14 +203,14 @@ const Capture: React.FC = () => {
     const componentMountTime = performance.now()
     const componentMountTimestamp = new Date().toISOString()
     console.log('[MODEL_STATUS] phase=component_mount timestamp=' + componentMountTimestamp)
-    
+
     const firstCheckStartTime = performance.now()
     refreshModelStatus().then(() => {
       const firstCheckElapsed = performance.now() - firstCheckStartTime
       const mountToFirstCheckElapsed = performance.now() - componentMountTime
       console.log('[MODEL_STATUS] phase=first_check_complete elapsed=' + firstCheckElapsed.toFixed(2) + 'ms mount_to_check=' + mountToFirstCheckElapsed.toFixed(2) + 'ms')
     })
-    
+
     const intervalId = window.setInterval(() => {
       refreshModelStatus()
     }, 5000)
@@ -229,7 +230,7 @@ const Capture: React.FC = () => {
       console.log(`[CAPTURE] Polling status for call_id: ${callId}`)
       const response = await apiClient.get(`/api/v1/pipeline/results/${callId}`)
       const data = response.data.data
-      
+
       if (data.status === 'completed') {
         console.log(`[CAPTURE] File ${callId} completed processing`)
         return { status: 'completed' }
@@ -261,7 +262,7 @@ const Capture: React.FC = () => {
       const data = response.data?.data || {}
       const status = data.status
       const transcriptText = data.transcription?.transcription_text || ''
-      
+
       console.log(`[CAPTURE] Transcript fetched:`, { callId, status, textLength: transcriptText.length })
 
       if ((status !== 'completed' || !transcriptText) && attempt < 4) {
@@ -336,8 +337,8 @@ const Capture: React.FC = () => {
   // Cancel processing for a specific file
   const cancelFileProcessing = useCallback((fileId: string) => {
     console.log(`[CAPTURE] Cancelling processing for file: ${fileId}`)
-    updateFiles(prev => prev.map(f => 
-      f.id === fileId 
+    updateFiles(prev => prev.map(f =>
+      f.id === fileId
         ? { ...f, status: 'error', error: 'Processing cancelled by user' }
         : f
     ))
@@ -348,7 +349,7 @@ const Capture: React.FC = () => {
   const checkProcessingTimeouts = useCallback(() => {
     const now = Date.now()
     const timeoutMs = 10 * 60 * 1000 // 10 minutes timeout
-    
+
     updateFiles(prev => prev.map(f => {
       if (f.status === 'processing' && f.uploadedAt) {
         const processingTime = now - new Date(f.uploadedAt).getTime()
@@ -388,16 +389,16 @@ const Capture: React.FC = () => {
     for (let i = 0; i < sentences.length; i += 2) {
       const sentence = sentences[i]?.trim() || ''
       const punctuation = sentences[i + 1]?.trim() || ''
-      
+
       if (sentence) {
         const fullSentence = sentence + punctuation
         currentParagraph += fullSentence + ' '
 
         // Create paragraph break every 3-4 sentences or on natural pauses
-        if (currentParagraph.split(/[.!?]/).length > 3 || 
-            fullSentence.includes('right') || 
-            fullSentence.includes('okay') ||
-            fullSentence.includes('so')) {
+        if (currentParagraph.split(/[.!?]/).length > 3 ||
+          fullSentence.includes('right') ||
+          fullSentence.includes('okay') ||
+          fullSentence.includes('so')) {
           paragraphs.push(currentParagraph.trim())
           currentParagraph = ''
         }
@@ -451,31 +452,31 @@ const Capture: React.FC = () => {
 
   // Polling mechanism for processing files
   useEffect(() => {
-    const processingFiles = files.filter(f => 
+    const processingFiles = files.filter(f =>
       f.status === 'processing' && f.callId
     )
-    
+
     if (processingFiles.length === 0) {
       console.log(`[CAPTURE] No files to poll`)
       return
     }
 
-    console.log(`[CAPTURE] Starting polling for ${processingFiles.length} files:`, 
+    console.log(`[CAPTURE] Starting polling for ${processingFiles.length} files:`,
       processingFiles.map(f => ({ id: f.id, callId: f.callId, name: f.name }))
     )
 
     const pollInterval = setInterval(async () => {
       console.log(`[CAPTURE] Polling ${processingFiles.length} processing files...`)
-      
+
       for (const file of processingFiles) {
         if (file.callId) {
           try {
             const status = await pollFileStatus(file.callId)
-            
+
             if (status.status === 'completed') {
               console.log(`[CAPTURE] File ${file.name} completed processing`)
-              updateFiles(prev => prev.map(f => 
-                f.id === file.id 
+              updateFiles(prev => prev.map(f =>
+                f.id === file.id
                   ? { ...f, status: 'completed', progress: 100 }
                   : f
               ))
@@ -490,8 +491,8 @@ const Capture: React.FC = () => {
               }, 5000)
             } else if (status.status === 'failed') {
               console.log(`[CAPTURE] File ${file.name} failed processing: ${status.error}`)
-              updateFiles(prev => prev.map(f => 
-                f.id === file.id 
+              updateFiles(prev => prev.map(f =>
+                f.id === file.id
                   ? { ...f, status: 'error', error: status.error }
                   : f
               ))
@@ -531,6 +532,36 @@ const Capture: React.FC = () => {
     updateFiles(prev => [...prev, ...newFiles])
   }, [updateFiles])
 
+  // YouTube state
+  const [youtubeUrl, setYoutubeUrl] = useState('')
+  const [youtubeLoading, setYoutubeLoading] = useState(false)
+  const [youtubeError, setYoutubeError] = useState<string | null>(null)
+
+  const handleYoutubeSubmit = async () => {
+    if (!youtubeUrl) return
+    setYoutubeLoading(true)
+    setYoutubeError(null)
+    setLiveTranscript('') // clear previous
+
+    try {
+      console.log(`[CAPTURE] Transcribing YouTube URL: ${youtubeUrl}`)
+      const response = await apiClient.post('/api/v1/youtube/transcribe', { url: youtubeUrl })
+      const data = response.data // { source, title, text, segments, duration }
+
+      console.log(`[CAPTURE] YouTube transcription success:`, data.title)
+      setLiveTranscript(data.text || '')
+      setLiveSource('upload') // Re-use 'upload' type for now to enable download features
+      setLiveCallId(`yt-${Date.now()}`) // Mock ID
+
+      // Optional: Show success toast or message
+    } catch (error: any) {
+      console.error('[CAPTURE] YouTube transcription failed:', error)
+      setYoutubeError(error?.response?.data?.detail || error.message || 'Transcription failed')
+    } finally {
+      setYoutubeLoading(false)
+    }
+  }
+
   // Handle drag and drop
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -554,10 +585,10 @@ const Capture: React.FC = () => {
     try {
       console.log(`[CAPTURE] Starting upload for file: ${file.name}`)
       setUploading(true)
-      
+
       // Update status to uploading
-      updateFiles(prev => prev.map(f => 
-        f.id === file.id 
+      updateFiles(prev => prev.map(f =>
+        f.id === file.id
           ? { ...f, status: 'uploading', progress: 0 }
           : f
       ))
@@ -567,7 +598,7 @@ const Capture: React.FC = () => {
       const actualFile = file.file
       if (!actualFile) throw new Error('File content not available')
       formData.append('file', actualFile)
-      
+
       console.log(`[CAPTURE] Sending file to: ${API_ENDPOINTS.UPLOAD}`)
       console.log(`[CAPTURE] File details:`, {
         name: actualFile.name,
@@ -597,7 +628,7 @@ const Capture: React.FC = () => {
           }
         }
       })
-  
+
       console.log(`[CAPTURE] Response status: ${response.status}`)
       console.log(`[CAPTURE] Response headers:`, response.headers)
 
@@ -612,8 +643,8 @@ const Capture: React.FC = () => {
       }
 
       // Keep file in processing state until pipeline finishes
-      updateFiles(prev => prev.map(f => 
-        f.id === file.id 
+      updateFiles(prev => prev.map(f =>
+        f.id === file.id
           ? { ...f, status: 'processing', progress: 100, callId }
           : f
       ))
@@ -630,14 +661,14 @@ const Capture: React.FC = () => {
 
     } catch (error) {
       console.error(`[CAPTURE] Error uploading ${file.name}:`, error)
-      
-      updateFiles(prev => prev.map(f => 
-        f.id === file.id 
-          ? { 
-              ...f, 
-              status: 'error', 
-              error: (error as any)?.message || 'Upload failed'
-            }
+
+      updateFiles(prev => prev.map(f =>
+        f.id === file.id
+          ? {
+            ...f,
+            status: 'error',
+            error: (error as any)?.message || 'Upload failed'
+          }
           : f
       ))
     } finally {
@@ -649,7 +680,7 @@ const Capture: React.FC = () => {
   const startUpload = async () => {
     const pendingFiles = files.filter(f => f.status === 'pending')
     console.log(`[CAPTURE] Starting upload for ${pendingFiles.length} pending files`)
-    
+
     for (const file of pendingFiles) {
       await uploadFile(file)
     }
@@ -692,28 +723,26 @@ const Capture: React.FC = () => {
               Record live or import existing audio files for instant AI-powered transcription. Supported formats: WAV, MP3, M4A, FLAC (up to 10GB).
             </p>
           </div>
-          
+
         </div>
       </section>
 
       {modelStatusMessage && (
         <div
-          className={`glass-surface flex items-center gap-3 rounded-2xl border px-4 py-4 text-sm shadow-glow ${
-            modelStatus === 'loading'
-              ? 'border-yellow-400/30 text-yellow-100'
-              : modelStatus === 'not_loaded'
-                ? 'border-pink-500/40 text-rose-100'
-                : 'border-cyan-400/30 text-cyan-100'
-          }`}
+          className={`glass-surface flex items-center gap-3 rounded-2xl border px-4 py-4 text-sm shadow-glow ${modelStatus === 'loading'
+            ? 'border-yellow-400/30 text-yellow-100'
+            : modelStatus === 'not_loaded'
+              ? 'border-pink-500/40 text-rose-100'
+              : 'border-cyan-400/30 text-cyan-100'
+            }`}
         >
           <span
-            className={`inline-flex h-3 w-3 rounded-full ${
-              modelStatus === 'loading'
-                ? 'bg-yellow-300 animate-pulse'
-                : modelStatus === 'not_loaded'
-                  ? 'bg-pink-500'
-                  : 'bg-cyan-300 animate-ping'
-            }`}
+            className={`inline-flex h-3 w-3 rounded-full ${modelStatus === 'loading'
+              ? 'bg-yellow-300 animate-pulse'
+              : modelStatus === 'not_loaded'
+                ? 'bg-pink-500'
+                : 'bg-cyan-300 animate-ping'
+              }`}
           />
           <span>{modelStatusMessage}</span>
         </div>
@@ -748,11 +777,11 @@ const Capture: React.FC = () => {
               <LiveMicPanel
                 onTranscriptStart={() => {
                   console.log('[DEBUG] onTranscriptStart called - Resetting states')
-                  console.log('[DEBUG] Previous state:', { 
-                    liveTranscript: liveTranscript?.length || 0, 
-                    liveCallId, 
+                  console.log('[DEBUG] Previous state:', {
+                    liveTranscript: liveTranscript?.length || 0,
+                    liveCallId,
                     liveError,
-                    liveSource 
+                    liveSource
                   })
                   setLiveLoading(true)
                   setLiveError(null)
@@ -763,8 +792,8 @@ const Capture: React.FC = () => {
                 }}
                 onTranscriptComplete={({ text, callId }) => {
                   console.log('[DEBUG] onTranscriptComplete called')
-                  console.log('[DEBUG] Received data:', { 
-                    textLength: text?.length || 0, 
+                  console.log('[DEBUG] Received data:', {
+                    textLength: text?.length || 0,
                     callId,
                     textPreview: text?.substring(0, 50) + '...' || 'empty'
                   })
@@ -797,9 +826,8 @@ const Capture: React.FC = () => {
           className="flex flex-col gap-6"
         >
           <div
-            className={`rounded-2xl border-2 border-dashed p-10 text-center transition-all ${
-              isDragOver ? 'border-cyan-400 bg-white/10' : 'border-white/20 hover:border-cyan-300/70'
-            }`}
+            className={`rounded-2xl border-2 border-dashed p-10 text-center transition-all ${isDragOver ? 'border-cyan-400 bg-white/10' : 'border-white/20 hover:border-cyan-300/70'
+              }`}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
@@ -931,6 +959,42 @@ const Capture: React.FC = () => {
               </div>
             </div>
           )}
+        </Card>
+
+        {/* New YouTube Card */}
+        <Card
+          title="Import from YouTube"
+          subtitle="Paste a YouTube URL to transcribe instantly."
+          icon="📺"
+          className="col-span-full xl:col-span-2"
+        >
+          <div className="flex flex-col gap-4">
+            <div className="flex gap-4">
+              <input
+                type="text"
+                placeholder="https://www.youtube.com/watch?v=..."
+                value={youtubeUrl}
+                onChange={(e) => setYoutubeUrl(e.target.value)}
+                className="flex-1 rounded-xl border border-white/10 bg-black/20 px-4 py-3 placeholder-white/30 focus:border-cyan-400 focus:outline-none"
+                onKeyDown={(e) => e.key === 'Enter' && handleYoutubeSubmit()}
+              />
+              <Button
+                variant="primary"
+                onClick={handleYoutubeSubmit}
+                disabled={!youtubeUrl || youtubeLoading}
+              >
+                {youtubeLoading ? 'Processing...' : 'Transcribe'}
+              </Button>
+            </div>
+            {youtubeError && (
+              <div className="rounded-lg bg-red-500/10 p-3 text-sm text-red-200 border border-red-500/20">
+                Error: {youtubeError}
+              </div>
+            )}
+            <p className="text-xs text-white/50">
+              Supports most YouTube videos. Tries captions first (instant), then falls back to audio processing (slower).
+            </p>
+          </div>
         </Card>
       </div>
 
@@ -1143,8 +1207,8 @@ function LiveMicPanel({
     } catch (e: any) {
       setError(e?.message || 'Failed to start recording')
       console.error('[LIVE] start() failed', e)
-      try { mediaRef.current?.stop() } catch {}
-      try { streamRef.current?.getTracks().forEach(t => t.stop()) } catch {}
+      try { mediaRef.current?.stop() } catch { }
+      try { streamRef.current?.getTracks().forEach(t => t.stop()) } catch { }
       setRecording(false)
       setSessionId(null)
     }
@@ -1153,10 +1217,10 @@ function LiveMicPanel({
   const stop = useCallback(async () => {
     try {
       console.log('[LIVE] stop(): stopping recorder and mic…')
-      try { mediaRef.current?.requestData?.() } catch {}
+      try { mediaRef.current?.requestData?.() } catch { }
       mediaRef.current?.stop()
       streamRef.current?.getTracks().forEach(t => t.stop())
-    } catch {}
+    } catch { }
     setRecording(false)
     setProcessingFinal(true)
     try {
@@ -1194,15 +1258,15 @@ function LiveMicPanel({
         const transcriptPath = res.data?.transcript_path
         const combinedPath = res.data?.combined_path
         console.log('[LIVE] stop(): response received', { ms: dt, chunksCount, concatOk, durationSec, callId: cid, transcriptPath, combinedPath, textLen: txt.length })
-        
+
         // Check if transcription was successful
         if (!txt || txt.trim().length === 0) {
-            console.warn('[LIVE] stop(): Transcription returned empty text', { callId: cid, chunksCount, concatOk })
-            const errorMsg = 'Transcription returned empty text. This may indicate silence was detected or transcription failed.'
-            onTranscriptError && onTranscriptError(errorMsg)
-            return
+          console.warn('[LIVE] stop(): Transcription returned empty text', { callId: cid, chunksCount, concatOk })
+          const errorMsg = 'Transcription returned empty text. This may indicate silence was detected or transcription failed.'
+          onTranscriptError && onTranscriptError(errorMsg)
+          return
         }
-        
+
         setCallId(cid)
         console.log('[DEBUG] LiveMicPanel stop() - calling onTranscriptComplete with:', { textLength: txt.length, callId: cid, textPreview: txt.substring(0, 50) })
         onTranscriptComplete && onTranscriptComplete({ text: txt, callId: cid })
@@ -1229,8 +1293,8 @@ function LiveMicPanel({
         <div className="text-sm text-white/70">
           {recording
             ? 'Listening for every detail...'
-      : processingFinal
-        ? 'Processing final transcript…'
+            : processingFinal
+              ? 'Processing final transcript…'
               : callId
                 ? 'Transcript ready — see Live Transcription or Transcripts tab.'
                 : 'Press record to capture high-fidelity audio.'}
@@ -1245,9 +1309,8 @@ function LiveMicPanel({
       <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
         <button
           onClick={recording ? stop : start}
-          className={`relative flex h-28 w-28 items-center justify-center rounded-full border-2 border-pink-500/50 bg-gradient-to-br from-pink-500 via-red-500 to-orange-500 text-white shadow-glow-pink transition-transform hover:scale-105 ${
-            recording ? 'animate-mic-ripple' : ''
-          }`}
+          className={`relative flex h-28 w-28 items-center justify-center rounded-full border-2 border-pink-500/50 bg-gradient-to-br from-pink-500 via-red-500 to-orange-500 text-white shadow-glow-pink transition-transform hover:scale-105 ${recording ? 'animate-mic-ripple' : ''
+            }`}
         >
           <span className="text-lg font-semibold tracking-wide uppercase">
             {recording ? 'Stop' : 'Rec'}

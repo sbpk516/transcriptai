@@ -176,13 +176,13 @@ class AudioUploadHandler:
                 except OSError as cleanup_error:
                     logger.error(f"Failed to clean up partial file {file_path}: {cleanup_error}")
             
-            logger.error(f"Failed to save file: {e}")
+            logger.error(f"Failed to save file: {e}", exc_info=True)
             debug_helper.capture_exception(
                 "save_audio_file",
                 e,
-                {"file_path": str(file_path), "call_id": call_id}
+                {"file_path": str(file_path), "call_id": call_id, "error_type": type(e).__name__}
             )
-            raise HTTPException(status_code=500, detail="Failed to save file")
+            raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
     
     @log_function_call
     async def create_call_record(self, db: Session, file_path: str, original_filename: str, call_id: str, file_size_bytes: int) -> Call:

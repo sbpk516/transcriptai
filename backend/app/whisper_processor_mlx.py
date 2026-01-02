@@ -956,4 +956,3 @@ class WhisperProcessorMLX:
             except Exception as e:
                 logger.error(f"Error switching model: {e}")
                 return False
-

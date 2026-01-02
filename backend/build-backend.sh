@@ -14,8 +14,10 @@ mkdir -p "$OUT"
 # Use start.py as entry or a small launcher that imports uvicorn app
 cd "$ROOT/backend"
 
-export TRANSCRIPTAI_BUNDLE_TORCH="${TRANSCRIPTAI_BUNDLE_TORCH:-1}"
-echo "TRANSCRIPTAI_BUNDLE_TORCH=${TRANSCRIPTAI_BUNDLE_TORCH} (set to 0 to skip bundling if you explicitly want MLX-only)"
+# --- CONFIGURATION: Default to 0 (Optimized Mac Build) ---
+export TRANSCRIPTAI_BUNDLE_TORCH="${TRANSCRIPTAI_BUNDLE_TORCH:-0}"
+echo "TRANSCRIPTAI_BUNDLE_TORCH=${TRANSCRIPTAI_BUNDLE_TORCH} (0 = optimized Mac build, 1 = full/Windows build)"
+# ---------------------------------------------------------
 
 # --- SAFETY CHECK: Verify Python Environment ---
 echo "🔍 Checking Python environment..."
@@ -40,24 +42,3 @@ echo "✅ Environment looks good: $($PYTHON_EXEC --version) (uvicorn found)"
 # Using python3 -m PyInstaller ensures we use the active python environment (where deps are installed)
 # instead of a potentially mismatched pyinstaller binary on the PATH.
 python3 -m PyInstaller -y --clean transcriptai-backend.spec
-
-# Move artifact (--onedir creates a directory)
-if [[ -d dist/transcriptai-backend ]]; then
-  # Remove old directory OR file if exists
-  [[ -d "$OUT/transcriptai-backend" ]] && rm -rf "$OUT/transcriptai-backend"
-  [[ -f "$OUT/transcriptai-backend" ]] && rm -f "$OUT/transcriptai-backend"
-  mv dist/transcriptai-backend "$OUT/"
-  echo "✅ Backend directory built: $OUT/transcriptai-backend"
-  echo "   Executable: $OUT/transcriptai-backend/transcriptai-backend"
-elif [[ -f dist/transcriptai-backend ]]; then
-  # Fallback: single file (--onefile mode)
-  [[ -f "$OUT/transcriptai-backend" ]] && rm -f "$OUT/transcriptai-backend"
-  mv dist/transcriptai-backend "$OUT/"
-  echo "✅ Backend binary built: $OUT/transcriptai-backend"
-elif [[ -f dist/transcriptai-backend.exe ]]; then
-  [[ -f "$OUT/transcriptai-backend.exe" ]] && rm -f "$OUT/transcriptai-backend.exe"
-  mv dist/transcriptai-backend.exe "$OUT/"
-  echo "✅ Backend binary built: $OUT/transcriptai-backend.exe"
-fi
-
-echo "Done. Place the backend (directory or binary) under backend/bin before packaging the desktop app."

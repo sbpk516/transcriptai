@@ -269,3 +269,4 @@ Access GitHub Repository.zip
 # Allow development docs
 !docs/development/
 !docs/development/*.md
+backend-cpp/models/*.bin

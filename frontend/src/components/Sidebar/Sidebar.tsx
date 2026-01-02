@@ -16,10 +16,10 @@ const menuItems: Array<{
   description: string
   accent: string
 }> = [
-  { id: 'capture', label: 'Capture', icon: '🎙️', description: 'Record or upload audio', accent: 'from-cyan-400 to-blue-500' },
-  { id: 'transcripts', label: 'Transcripts', icon: '📄', description: 'History of transcripts', accent: 'from-purple-400 to-pink-500' },
-  { id: 'settings', label: 'Settings', icon: '⚙️', description: 'Choose models', accent: 'from-blue-400 to-slate-400' },
-]
+    { id: 'capture', label: 'Capture', icon: '🎙️', description: 'Record or upload audio', accent: 'from-cyan-400 to-blue-500' },
+    { id: 'transcripts', label: 'Transcripts', icon: '📄', description: 'History of transcripts', accent: 'from-purple-400 to-pink-500' },
+    { id: 'settings', label: 'Settings', icon: '⚙️', description: 'Choose models', accent: 'from-blue-400 to-slate-400' },
+  ]
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle, activePage, onPageChange }) => {
   return (
@@ -31,9 +31,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle, activePage, onPageC
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-72 transform p-4 transition-transform duration-300 lg:static lg:w-72 lg:translate-x-0 ${
-          isOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
+        className={`fixed inset-y-0 left-0 z-40 w-72 transform p-4 transition-transform duration-300 lg:static lg:w-72 lg:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
       >
         <div className="glass-surface flex h-full flex-col rounded-3xl border border-white/10 p-4 shadow-glow">
           <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs uppercase tracking-[0.3em] text-white/70">
@@ -56,11 +55,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle, activePage, onPageC
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: index * 0.05 }}
                   whileHover={{ scale: 1.01 }}
-                  className={`w-full rounded-2xl border border-white/10 px-4 py-4 text-left text-sm transition-all duration-200 ${
-                    isActive
-                      ? `bg-white/10 text-white shadow-glow hover:translate-y-[-2px]`
-                      : 'bg-white/5 text-white/70 hover:bg-white/10'
-                  }`}
+                  className={`w-full rounded-2xl border border-white/10 px-4 py-4 text-left text-sm transition-all duration-200 ${isActive
+                    ? `bg-white/10 text-white shadow-glow hover:translate-y-[-2px]`
+                    : 'bg-white/5 text-white/70 hover:bg-white/10'
+                    }`}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">

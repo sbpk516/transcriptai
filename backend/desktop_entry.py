@@ -145,28 +145,55 @@ def main() -> int:
             write_error_log(data_dir, "import", error_msg, trace)
             return 1
 
-    print(f"🚀 Starting bundled backend on http://{host}:{port}")
-    sys.stdout.flush()
-    
-    # Verify port is available before starting
+    # Try multiple candidate ports if primary is busy (handles race conditions)
     import socket
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        sock.bind((host, port))
-        sock.close()
-    except OSError as e:
-        error_msg = f"Port {port} is not available: {e}"
-        print(f"❌ {error_msg}")
-        write_error_log(data_dir, "port", error_msg, traceback.format_exc())
-        return 1
-    
+    candidate_ports = [port, 8001, 8011, 8021, 8031, 8041]
+    # Remove duplicates while preserving order
+    seen = set()
+    candidate_ports = [p for p in candidate_ports if not (p in seen or seen.add(p))]
+
+    actual_port = None
+    for candidate in candidate_ports:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind((host, candidate))
+            sock.close()
+            actual_port = candidate
+            break
+        except OSError as e:
+            print(f"⚠️  Port {candidate} unavailable: {e}")
+            sock.close()
+            continue
+
+    if actual_port is None:
+        # Last resort: try ephemeral port
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind((host, 0))
+            actual_port = sock.getsockname()[1]
+            sock.close()
+            print(f"ℹ️  Using ephemeral port: {actual_port}")
+        except OSError as e:
+            error_msg = f"All ports unavailable, including ephemeral: {e}"
+            print(f"❌ {error_msg}")
+            write_error_log(data_dir, "port", error_msg, traceback.format_exc())
+            return 1
+
+    if actual_port != port:
+        print(f"ℹ️  Port {port} was busy, using port {actual_port} instead")
+
+    print(f"🚀 Starting bundled backend on http://{host}:{actual_port}")
+    sys.stdout.flush()
+
     try:
         print("🔧 Calling uvicorn.run()...")
         sys.stdout.flush()
-        uvicorn.run(app, host=host, port=port, log_level="info")
+        uvicorn.run(app, host=host, port=actual_port, log_level="info")
         return 0
     except OSError as e:
-        error_msg = f"Failed to bind to port {port}: {e}"
+        error_msg = f"Failed to bind to port {actual_port}: {e}"
         print(f"❌ {error_msg}")
         write_error_log(data_dir, "startup", error_msg, traceback.format_exc())
         return 1

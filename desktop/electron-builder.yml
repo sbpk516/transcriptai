@@ -20,33 +20,23 @@ extraResources:
   # Include cache manager for PyInstaller bundle caching
   - from: ../backend/pyinstaller_cache_manager.js
     to: backend/pyinstaller_cache_manager.js
-  # Include MLX virtual environment (Option A packaging)
-  - from: ../venv_mlx
-    to: venv_mlx
-    filter:
-      - "**/*"
-      - "!**/__pycache__/**"
-      - "!**/*.pyc"
-      - "!**/*.pyo"
-      - "!**/tests/**"
-      - "!**/test/**"
-      - "!**/*.tests/**"
-      - "!**/*.md"
-      - "!**/*.rst"
-      - "!**/.git/**"
-      - "!**/*.dist-info/**"
-  # Include Whisper model cache for offline transcription (only tiny.pt)
-  - from: ../backend/whisper_cache/whisper
-    to: whisper_cache/whisper
-    filter:
-      - "tiny.pt"
   # Include native helper for global key listener (macOS)
   - from: node_modules/node-global-key-listener/bin
     to: bin
+  # --- Phase 1 & 3: C++ Binaries & Models ---
+  - from: ../backend-cpp/whisper-server
+    to: whisper-server
+  - from: ../backend-cpp
+    to: .
+    filter:
+      - "*.dylib"
+  - from: ../backend-cpp/models
+    to: models
+  # ------------------------------------------
 mac:
   target: [dmg]
   category: public.app-category.productivity
-  compression: maximum
+  compression: store
 win:
   target: [nsis]
   compression: maximum

@@ -40,10 +40,10 @@ class Settings(BaseSettings):
     upload_dir: str = "../audio_uploads"  # Overridden in desktop mode
     
     # Feature Flags
-    # Live/progressive transcription (SSE). Disabled by default for safety.
-    live_transcription: bool = False
-    # Microphone-based live capture (MediaRecorder chunks). Disabled by default.
-    live_mic: bool = False
+    # Live/progressive transcription (SSE). Enabled by default.
+    live_transcription: bool = True
+    # Microphone-based live capture (MediaRecorder chunks). Enabled by default.
+    live_mic: bool = True
     
     @property
     def max_file_size_bytes(self) -> int:
@@ -105,17 +105,17 @@ def get_secret_key() -> str:
 def is_live_transcription_enabled() -> bool:
     """Return True if live transcription (SSE) is enabled via env.
 
-    Controlled by TRANSCRIPTAI_LIVE_TRANSCRIPTION=1. Defaults to False.
+    Controlled by TRANSCRIPTAI_LIVE_TRANSCRIPTION (default: enabled).
     """
-    return os.getenv("TRANSCRIPTAI_LIVE_TRANSCRIPTION", "0") == "1"
+    return os.getenv("TRANSCRIPTAI_LIVE_TRANSCRIPTION", "1") == "1"
 
 
 def is_live_mic_enabled() -> bool:
     """Return True if mic-based live capture is enabled via env.
 
-    Controlled by TRANSCRIPTAI_LIVE_MIC=1. Defaults to False.
+    Controlled by TRANSCRIPTAI_LIVE_MIC (default: enabled).
     """
-    return os.getenv("TRANSCRIPTAI_LIVE_MIC", "0") == "1"
+    return os.getenv("TRANSCRIPTAI_LIVE_MIC", "1") == "1"
 
 
 def is_live_batch_only() -> bool:

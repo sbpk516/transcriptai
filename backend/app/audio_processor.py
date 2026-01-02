@@ -263,24 +263,65 @@ class AudioProcessor:
                 output_path = self.processed_dir / output_filename
                 
                 # Build FFmpeg command
+                # CRITICAL: For M4A/AAC files, explicitly specify -f wav to prevent hangs
+                # Some AAC encodings cause ffmpeg to deadlock without explicit format
                 cmd = [
                     'ffmpeg',
                     '-i', input_path,
                     '-ar', str(sample_rate),  # Sample rate
                     '-ac', str(channels),     # Number of channels
+                    '-f', output_format,      # CRITICAL: Explicit output format
                     '-y',  # Overwrite output file
                     str(output_path)
                 ]
                 
                 logger.debug(f"FFmpeg command: {' '.join(cmd)}")
-                
-                # Execute conversion
-                result = subprocess.run(
+            
+                # Execute conversion with progress monitoring to prevent hangs
+                # M4A files can cause ffmpeg to deadlock - we need to force-kill it
+                import time
+                process = subprocess.Popen(
                     cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=300  # 5 minutes timeout
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
                 )
+                
+                # Monitor process with timeout
+                timeout_seconds = 60  # Kill after 60 seconds max
+                
+                try:
+                    stdout, stderr = process.communicate(timeout=timeout_seconds)
+                    returncode = process.returncode
+                except subprocess.TimeoutExpired:
+                    # Force kill the hung process
+                    logger.warning(f"FFmpeg hung for {timeout_seconds}s, force-killing process")
+                    process.kill()
+                    try:
+                        stdout, stderr = process.communicate(timeout=5)
+                    except:
+                        pass
+                    
+                    error_msg = f"Audio conversion timed out after {timeout_seconds}s (likely hung on M4A codec)"
+                    logger.error(error_msg)
+                    debug_helper.capture_exception(
+                        "audio_conversion",
+                        Exception(error_msg),
+                        {"input_path": input_path, "output_format": output_format}
+                    )
+                    return {
+                        "input_path": input_path,
+                        "conversion_success": False,
+                        "error": error_msg,
+                        "conversion_timestamp": datetime.now().isoformat()
+                    }
+                
+                # Create result object matching subprocess.run interface
+                result = type('Result', (), {
+                    'returncode': returncode,
+                    'stdout': stdout,
+                    'stderr': stderr
+                })()    
                 
                 if result.returncode == 0:
                     # Verify output file exists and has content
