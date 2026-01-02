@@ -270,3 +270,4 @@ Access GitHub Repository.zip
 !docs/development/
 !docs/development/*.md
 backend-cpp/models/*.bin
+desktop/node_modules/

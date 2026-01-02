@@ -1,6 +1,7 @@
 """API endpoints for managing Whisper models."""
 import logging
 import json
+import os
 import threading
 import time
 from datetime import datetime
@@ -30,6 +31,9 @@ class ModelInfo(BaseModel):
     message: Optional[str] = None
     version: Optional[str] = None
     updated_at: Optional[str] = None
+    backend: Optional[str] = None
+    management_supported: Optional[bool] = None
+    runtime_model: Optional[str] = None
 
 
 class ModelSelectRequest(BaseModel):
@@ -124,6 +128,17 @@ def _desired_version(name: str) -> str:
     return MODEL_VERSIONS.get(name, "main")
 
 
+def _whisper_cpp_model_label() -> str:
+    env_value = os.getenv("WHISPER_CPP_MODEL") or os.getenv("WHISPER_CPP_MODEL_NAME")
+    if env_value:
+        label = Path(env_value).name
+    else:
+        label = "ggml-base.en.bin"
+    if label.endswith(".bin"):
+        label = label[:-4]
+    return label
+
+
 def _supports_model_management(processor: Any) -> bool:
     return all(
         hasattr(processor, attr)
@@ -161,6 +176,7 @@ def _derive_model_info(
     model_name: str,
     active_model: str,
     job_state: Dict[str, Dict[str, Any]],
+    backend: Optional[str],
 ) -> ModelInfo:
     cached = processor.is_model_cached(model_name)
     state = job_state.get(model_name, {})
@@ -213,6 +229,8 @@ def _derive_model_info(
         message=message,
         version=version,
         updated_at=state.get("updated_at"),
+        backend=backend,
+        management_supported=True,
     )
 
 
@@ -222,7 +240,9 @@ async def list_models() -> List[ModelInfo]:
     processor = get_global_whisper_processor()
 
     if not _supports_model_management(processor):
-        name = getattr(processor, "model_name", "tiny")
+        backend = getattr(processor, "device", None) or "whisper.cpp"
+        runtime_model = _whisper_cpp_model_label() if isinstance(processor, WhisperProcessor) else None
+        name = runtime_model or getattr(processor, "model_name", "tiny")
         return [
             ModelInfo(
                 name=name,
@@ -233,16 +253,20 @@ async def list_models() -> List[ModelInfo]:
                 progress=1.0,
                 message="Model management is unavailable for this backend.",
                 version=_desired_version(name),
+                backend=backend,
+                management_supported=False,
+                runtime_model=runtime_model,
             )
         ]
 
     available_models = processor.get_available_models()
     active_model = processor.model_name
     job_state = _load_job_state()
+    backend = getattr(processor, "device", None)
 
     result = []
     for name in available_models:
-        result.append(_derive_model_info(processor, name, active_model, job_state))
+        result.append(_derive_model_info(processor, name, active_model, job_state, backend))
 
     return result
 

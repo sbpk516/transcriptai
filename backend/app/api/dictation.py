@@ -99,10 +99,23 @@ class WarmupResponse(BaseModel):
 @router.post("/warmup", response_model=WarmupResponse, summary="Ensure dictation models are warm")
 async def warmup_models() -> WarmupResponse:
     try:
-        loaded = whisper_processor.ensure_loaded()
+        # ensuring loaded is important to trigger loading if not loaded
+        whisper_processor.ensure_loaded()
+        
+        # Check actual status
+        status_info = whisper_processor.get_status()
+        
+        # Determine if loaded based on backend type
+        is_loaded = False
+        if status_info.get("backend") == "mlx":
+            is_loaded = status_info.get("loaded", False)
+        else:
+            # PyTorch/WhisperCPP
+            is_loaded = status_info.get("status") == "ready"
+            
     except Exception as exc:
         logger.error("[DICTATION] warmup_failed error=%s", exc)
         raise HTTPException(status_code=500, detail="Failed to warm up speech model") from exc
 
-    logger.info("[DICTATION] warmup status=complete did_load=%s", bool(loaded))
-    return WarmupResponse(status="ok", whisper_loaded=bool(loaded))
+    logger.info("[DICTATION] warmup status=complete is_loaded=%s", is_loaded)
+    return WarmupResponse(status="ok", whisper_loaded=is_loaded)
