@@ -20,7 +20,8 @@
     "@nut-tree-fork/nut-js": "^4.2.6",
     "@nut-tree-fork/shared": "^4.2.6",
     "node-global-key-listener": "^0.3.0",
-    "semver": "^7.6.3"
+    "semver": "^7.6.3",
+    "signal-exit": "^4.1.0"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

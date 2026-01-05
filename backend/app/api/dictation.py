@@ -105,13 +105,8 @@ async def warmup_models() -> WarmupResponse:
         # Check actual status
         status_info = whisper_processor.get_status()
         
-        # Determine if loaded based on backend type
-        is_loaded = False
-        if status_info.get("backend") == "mlx":
-            is_loaded = status_info.get("loaded", False)
-        else:
-            # PyTorch/WhisperCPP
-            is_loaded = status_info.get("status") == "ready"
+        # Determine if loaded
+        is_loaded = status_info.get("status") == "ready"
             
     except Exception as exc:
         logger.error("[DICTATION] warmup_failed error=%s", exc)

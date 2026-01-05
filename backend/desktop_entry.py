@@ -24,11 +24,7 @@ except ImportError as e:
 APP_IMPORT_ERROR = None
 app = None  # type: ignore
 
-try:
-    from app.mlx_runtime import activate_mlx_site_packages, get_mlx_venv_root
-except Exception:  # pragma: no cover
-    activate_mlx_site_packages = None  # type: ignore
-    get_mlx_venv_root = None  # type: ignore
+# Removed MLX runtime imports
 
 
 def getenv_int(name: str, default: int) -> int:
@@ -104,17 +100,7 @@ def main() -> int:
                 write_error_log(data_dir, "import", error_msg, traceback.format_exc())
                 return 1
 
-            if activate_mlx_site_packages:
-                try:
-                    if activate_mlx_site_packages(reason="desktop_entry"):
-                        if get_mlx_venv_root:
-                            print(f"🧠 MLX venv detected at: {get_mlx_venv_root()}")
-                    else:
-                        print("ℹ️  MLX venv not available, continuing without MLX")
-                except Exception as runtime_err:
-                    error_msg = f"Failed to activate MLX venv: {runtime_err}"
-                    print(f"⚠️  {error_msg}")
-                    write_error_log(data_dir, "mlx", error_msg, traceback.format_exc())
+            # Removed MLX venv activation
 
             _app_import_start = time.perf_counter()
             from app.main import app as _app  # type: ignore

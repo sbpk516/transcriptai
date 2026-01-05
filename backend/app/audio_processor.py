@@ -28,10 +28,10 @@ class AudioProcessor:
         self.processed_dir = self.upload_dir / "processed"
         self.processed_dir.mkdir(exist_ok=True)
         
-        # Verify FFmpeg is available
-        self._verify_ffmpeg()
+        # Verification will happen lazily on first use
+        self._ffmpeg_verified = None
         
-        logger.info("Audio processor initialized successfully")
+        logger.info("Audio processor initialized")
     
     def _verify_ffmpeg(self) -> bool:
         """
@@ -40,6 +40,11 @@ class AudioProcessor:
         Returns:
             True if FFmpeg is available, False otherwise
         """
+        if self._ffmpeg_verified is True:
+            return True
+        if self._ffmpeg_verified is False:
+            return False
+            
         try:
             result = subprocess.run(
                 ['ffmpeg', '-version'], 
@@ -54,9 +59,11 @@ class AudioProcessor:
                     "ffmpeg_verification",
                     {"status": "success", "version": result.stdout.split('\n')[0]}
                 )
+                self._ffmpeg_verified = True
                 return True
             else:
                 logger.error(f"FFmpeg verification failed: {result.stderr}")
+                self._ffmpeg_verified = False
                 return False
                 
         except FileNotFoundError:
@@ -65,12 +72,15 @@ class AudioProcessor:
                 "ffmpeg_verification",
                 {"status": "not_found", "error": "FFmpeg not in PATH"}
             )
+            self._ffmpeg_verified = False
             return False
         except subprocess.TimeoutExpired:
             logger.error("FFmpeg verification timed out")
+            self._ffmpeg_verified = False
             return False
         except Exception as e:
             logger.error(f"FFmpeg verification error: {e}")
+            self._ffmpeg_verified = False
             return False
     
     @log_function_call
@@ -288,7 +298,7 @@ class AudioProcessor:
                 )
                 
                 # Monitor process with timeout
-                timeout_seconds = 60  # Kill after 60 seconds max
+                timeout_seconds = 600  # Kill after 10 minutes max (needed for large files like 100MB+ M4As)
                 
                 try:
                     stdout, stderr = process.communicate(timeout=timeout_seconds)

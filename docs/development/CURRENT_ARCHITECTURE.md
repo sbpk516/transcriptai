@@ -1,6 +1,6 @@
 # Current System Architecture
 
-This document maps the components of the existing **Python/MLX** version of TranscriptAI.
+This document maps the components of the **Lite/Native** version of TranscriptAI.
 
 ## High-Level Architecture
 
@@ -32,7 +32,7 @@ graph TD
         
         subgraph "Core Processors"
             W[Whisper Processor]
-            note[Uses PyTorch + OpenAI Whisper<br/>(MLX dependencies exist but code uses Torch)]
+            note[Uses C++ Whisper Server<br/>(native performance, low RAM)]
             NLP[NLP Processor]
             LiveMic[Live Mic Session]
         end

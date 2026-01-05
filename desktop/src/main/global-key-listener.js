@@ -9,7 +9,7 @@ function resolveMacServerPath() {
   if (app && app.isPackaged) {
     return path.join(process.resourcesPath, 'bin', 'MacKeyServer')
   }
-  return path.join(__dirname, '..', 'node_modules', 'node-global-key-listener', 'bin', 'MacKeyServer')
+  return path.join(__dirname, '..', '..', 'node_modules', 'node-global-key-listener', 'bin', 'MacKeyServer')
 }
 
 function createGlobalKeyListenerFactory() {

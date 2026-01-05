@@ -12,7 +12,6 @@ from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 
 from ..whisper_backend_selector import get_global_whisper_processor, get_model_preference_path
-from ..whisper_processor_mlx import WhisperProcessorMLX
 from ..whisper_processor import WhisperProcessor
 
 logger = logging.getLogger("transcriptai.models")
@@ -44,7 +43,7 @@ class ModelDownloadRequest(BaseModel):
     name: str
 
 
-# Approximate sizes for MLX models (in MB)
+# Approximate sizes for models (in MB)
 MODEL_SIZES = {
     "tiny": 75,
     "base": 145,
@@ -172,7 +171,7 @@ def _current_state_for_model(model_name: str) -> Dict[str, Any]:
 
 
 def _derive_model_info(
-    processor: Union[WhisperProcessorMLX, WhisperProcessor],
+    processor: WhisperProcessor,
     model_name: str,
     active_model: str,
     job_state: Dict[str, Dict[str, Any]],

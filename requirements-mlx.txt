@@ -1,2 +1,0 @@
-# MLX Dependencies Removed for Hybrid Architecture v2.0
-# See requirements.txt for core dependencies.

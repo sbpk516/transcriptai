@@ -75,9 +75,15 @@ export const createApiClient = (): AxiosInstance => {
     ? String(import.meta.env.VITE_API_BASE_URL).trim()
     : ''
   const devBaseURL = rawEnvBaseUrl || ''
-  const chosenBaseURL = isFileProtocol
-    ? (electronPort ? `http://127.0.0.1:${electronPort}` : API_BASE_URL)
-    : devBaseURL
+
+  // UNIFIED DISCOVERY: 
+  // 1. If we are in Electron (window.api.backend.port exists), use it directly.
+  //    This works in BOTH Dev (http:) and Prod (file:).
+  // 2. Otherwise, use VITE_API_BASE_URL if set.
+  // 3. Finally, fallback to default API_BASE_URL.
+  const chosenBaseURL = electronPort
+    ? `http://127.0.0.1:${electronPort}`
+    : (isFileProtocol ? API_BASE_URL : devBaseURL)
 
   logger.log('Creating API client with configuration:', {
     chosenBaseURL,

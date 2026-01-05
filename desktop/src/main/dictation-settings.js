@@ -4,7 +4,7 @@ const path = require('path')
 
 const DEFAULT_SETTINGS = {
   enabled: false,
-  shortcut: 'CommandOrControl+Shift+D',
+  shortcut: 'CommandOrControl+Option',
 }
 
 let cachedSettings = null

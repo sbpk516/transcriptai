@@ -233,7 +233,7 @@ class AudioProcessingPipeline:
         # Initialize all components
         self.upload_handler = AudioUploadHandler()
         self.audio_processor = AudioProcessor()
-        self.whisper_processor = get_global_whisper_processor()  # Use backend selector for MLX/PyTorch
+        self.whisper_processor = get_global_whisper_processor()
         self.db_integration = DatabaseIntegration()
         
         # Initialize tracking and debugging
@@ -387,17 +387,30 @@ class AudioProcessingPipeline:
                 max_retries=3
             )
             
-            # Convert audio if needed with retry logic
-            conversion_result = {"status": "skipped", "message": "Audio conversion not implemented yet"}
+            # Convert audio to mono 16k WAV if not already with retry logic
+            # This is critical for whisper.cpp server compatibility.
+            conversion_result = await self._retry_operation(
+                lambda: self.audio_processor.convert_audio_format(
+                    file_path, 
+                    output_format="wav",
+                    sample_rate=16000,
+                    channels=1
+                ),
+                operation_name="audio_conversion",
+                max_retries=1
+            )
             
-            # Extract segments (optional) with retry logic
-            segments_result = {"status": "skipped", "message": "Audio segmentation not implemented yet"}
+            # Extract segments if needed (placeholder for now)
+            segments_result = {"status": "skipped", "message": "Audio segmentation placeholder"}
+            
+            # Determine output path (conversion_result returns it on success)
+            processed_file_path = conversion_result.get("output_path") if conversion_result.get("conversion_success") else file_path
             
             result = {
                 "analysis": analysis_result,
                 "conversion": conversion_result,
                 "segments": segments_result,
-                "processed_file_path": conversion_result.get("output_path", file_path)
+                "processed_file_path": processed_file_path
             }
             
             # Update pipeline data with processing results
@@ -432,11 +445,25 @@ class AudioProcessingPipeline:
             if call_id not in self.pipeline_data:
                 raise ValueError(f"Pipeline data not found for call_id: {call_id}")
             
-            # Use processed file path if available, otherwise use original
+            # Determine which file to transcribe (processed WAV or original)
+            # CRITICAL: whisper.cpp server strictly requires WAV.
+            # If conversion failed, we should NOT fallback to non-WAV (e.g. M4A) as it will yield empty results.
+            audio_path = None
             if "processed_file_path" in self.pipeline_data[call_id]:
                 audio_path = self.pipeline_data[call_id]["processed_file_path"]
-            else:
-                audio_path = self.pipeline_data[call_id]["file_path"]
+            
+            if not audio_path or not os.path.exists(audio_path):
+                # Fallback to original ONLY if it's already a WAV or if conversion was skipped
+                ext = Path(self.pipeline_data[call_id]["file_path"]).suffix.lower()
+                if ext == ".wav":
+                    logger.info(f"Using original WAV file for transcription: {self.pipeline_data[call_id]['file_path']}")
+                    audio_path = self.pipeline_data[call_id]["file_path"]
+                else:
+                    error_msg = f"Audio conversion failed or resulted in missing file, and original file {ext} is not supported for transcription."
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
+            
+            logger.info(f"Using audio file for transcription: {audio_path}")
 
             # Update status
             self.db_integration.update_call_status(call_id, "transcribing")
@@ -458,7 +485,6 @@ class AudioProcessingPipeline:
 
             if live_enabled and not batch_only:
                 # Chunked progressive transcription with SSE emits
-                import os
                 chunk_sec = int(os.getenv("TRANSCRIPTAI_LIVE_CHUNK_SEC", "3600") or 3600)  # 60 minutes default
                 stride_sec = int(os.getenv("TRANSCRIPTAI_LIVE_STRIDE_SEC", "60") or 60)  # 1 minute overlap (1.7% overlap)
                 final_parts: List[str] = []

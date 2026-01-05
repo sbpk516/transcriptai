@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+# Activate Python environment (virtualenv or conda)
+if [ -f "$(dirname "$0")/../.venv/bin/activate" ]; then
+    source "$(dirname "$0")/../.venv/bin/activate"
+elif command -v conda >/dev/null 2>&1; then
+    source "$(conda info --base)/etc/profile.d/conda.sh"
+    conda activate transcriptai
+fi
+
 # TranscriptAI Port Cleanup Script
 # This script clears all ports and processes related to TranscriptAI frontend and backend
 

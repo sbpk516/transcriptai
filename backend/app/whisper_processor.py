@@ -143,13 +143,17 @@ class WhisperProcessor:
             
             duration = time.time() - start_time
             logger.info(f"Transcription complete in {duration:.2f}s")
+            logger.debug(f"Transcription result: {result}")
             
             # Normalize response to match expected output structure
             # whisper.cpp server usually returns { "text": "...", "segments": [...] }
             # If keys are missing, fill them.
             if "text" not in result:
-                # Some versions might return lines
+                logger.warning(f"Whisper server response missing 'text' field: {result}")
                 result["text"] = "" 
+            
+            if not result["text"].strip():
+                logger.warning(f"Whisper server returned empty text for {audio_file}")
             
             return result
 
@@ -322,3 +326,71 @@ class WhisperProcessor:
             json.dump(transcript_data, f, indent=2)
 
         return {"transcript_path": str(path.absolute())}
+
+    def transcribe_snippet_from_base64(
+        self,
+        audio_base64: str,
+        media_type: str = "audio/wav",
+        sample_rate: Optional[int] = None,
+        max_duration_ms: int = 120000,
+    ) -> Dict[str, Any]:
+        """
+        Transcribe a short audio snippet from base64 (Desktop PTT).
+        Compatibility method to match MLX implementation but using C++ server.
+        """
+        import base64
+        import tempfile
+        import uuid
+        from .audio_processor import audio_processor
+
+        logger.info(f"[PTT] Processing base64 snippet: type={media_type}, rate={sample_rate}")
+
+        # 1. Decode base64
+        try:
+            audio_data = base64.b64decode(audio_base64)
+        except Exception as e:
+            logger.error(f"[PTT] Failed to decode base64: {e}")
+            raise ValueError(f"Invalid base64 audio data: {e}")
+
+        # 2. Save to temp file
+        # We use a unique name to avoid collisions
+        ext = media_type.split("/")[-1] if "/" in media_type else "wav"
+        if "webm" in ext:
+            ext = "webm"
+        
+        temp_id = str(uuid.uuid4())[:8]
+        with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
+            tmp.write(audio_data)
+            tmp_path = tmp.name
+
+        try:
+            # 3. Convert to mono 16k WAV if not already (Whisper requirement)
+            # Webm particularly needs conversion
+            conv_result = audio_processor.convert_audio_format(
+                tmp_path,
+                output_format="wav",
+                sample_rate=16000,
+                channels=1
+            )
+            
+            final_path = conv_result.get("output_path") if conv_result.get("conversion_success") else tmp_path
+            
+            # 4. Transcribe via existing method (calls C++ server)
+            result = self.transcribe(final_path)
+            
+            # 5. Build response matching expected DictationResponse
+            return {
+                "text": result.get("text", "").strip(),
+                "confidence": 1.0, # C++ server doesn't always provide per-snippet confidence
+                "duration_ms": int(max_duration_ms), # Rough estimate or extracted from file if needed
+            }
+
+        finally:
+            # Cleanup temp files
+            try:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+                # If we have a processed output path from audio_processor, we should clean it too
+                # but audio_processor manages its own processed_dir.
+            except Exception as e:
+                logger.warning(f"[PTT] Failed to cleanup temp files: {e}")
