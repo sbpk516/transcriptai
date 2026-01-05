@@ -305,4 +305,20 @@ contextBridge.exposeInMainWorld('transcriptaiDictation', {
       return null
     }
   },
+  async getMacPermissions() {
+    try {
+      return await ipcRenderer.invoke('dictation:get-mac-permissions')
+    } catch (error) {
+      console.error('[Preload] Failed to get Mac permissions', error)
+      throw error
+    }
+  },
+  async requestMacPermissions() {
+    try {
+      return await ipcRenderer.invoke('dictation:request-mac-permissions')
+    } catch (error) {
+      console.error('[Preload] Failed to request Mac permissions', error)
+      throw error
+    }
+  },
 })

@@ -50,15 +50,18 @@ class ChildProcessManager {
 }
 
 const processManager = new ChildProcessManager()
-app.on('before-quit', () => processManager.killAll())
+
+
 
 const dictationSettings = require('./main/dictation-settings')
 const DictationManager = require('./main/dictation-manager')
 const recordingIndicatorWindow = require('./main/recording-indicator-window')
 let macPermissions = null
 try {
-  macPermissions = require('node-mac-permissions')
+  macPermissions = require('@nut-tree-fork/node-mac-permissions')
+  logLine('info', 'Successfully loaded @nut-tree-fork/node-mac-permissions')
 } catch (error) {
+  logLine('error', 'Failed to load @nut-tree-fork/node-mac-permissions', error.message)
   macPermissions = null
 }
 
@@ -185,9 +188,9 @@ async function checkMacAccessibility() {
     return true
   }
   try {
-    const trusted = macPermissions.isTrustedAccessibilityClient?.(false)
-    logLine('dictation_accessibility_status', { trusted })
-    return !!trusted
+    const status = macPermissions.getAuthStatus?.('accessibility')
+    logLine('dictation_accessibility_status', { status })
+    return status === 'authorized'
   } catch (error) {
     logLine('dictation_accessibility_check_error', error.message)
     return false
@@ -199,7 +202,7 @@ async function checkMacMicPermission() {
     return true
   }
   try {
-    const status = macPermissions.getMicrophoneAuthorizationStatus?.()
+    const status = macPermissions.getAuthStatus?.('microphone')
     logLine('dictation_microphone_status', { status })
     return status === 'authorized' || status === 'not determined'
   } catch (error) {
@@ -215,14 +218,18 @@ async function promptMacPermissions() {
   let accessibility = false
   let microphone = false
   try {
-    accessibility = macPermissions.isTrustedAccessibilityClient?.(true) ?? false
-    logLine('dictation_accessibility_prompt', { accessibility })
+    macPermissions.askForAccessibilityAccess?.()
+    const accStatus = macPermissions.getAuthStatus?.('accessibility')
+    accessibility = accStatus === 'authorized'
+    logLine('dictation_accessibility_prompt', { accessibility, status: accStatus })
   } catch (error) {
     logLine('dictation_accessibility_prompt_error', error.message)
   }
   try {
-    microphone = macPermissions.askForMicrophoneAccess?.() ?? false
-    logLine('dictation_microphone_prompt', { microphone })
+    await macPermissions.askForMicrophoneAccess?.()
+    const micStatus = macPermissions.getAuthStatus?.('microphone')
+    microphone = micStatus === 'authorized'
+    logLine('dictation_microphone_prompt', { microphone, status: micStatus })
   } catch (error) {
     logLine('dictation_microphone_prompt_error', error.message)
   }
@@ -293,7 +300,7 @@ async function findPort(candidates = [8001, 8011, 8021]) {
   })
 }
 
-function waitForHealth(port, { attempts = (isDev ? 20 : 60), delayMs = 500, candidatePorts = null } = {}) {
+function waitForHealth(port, { attempts = 400, delayMs = 500, candidatePorts = null } = {}) {
   // If candidatePorts provided, try each one (handles Python fallback to different port)
   const portsToTry = candidatePorts || [port]
   let attempt = 0
@@ -599,26 +606,35 @@ async function createMainWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: true,
+      backgroundThrottling: false
     }
   })
 
-  const devUrl = `http://localhost:${FRONTEND_PORT}`
+  const devUrl = `http://127.0.0.1:${FRONTEND_PORT}`
 
   // If forcing bundled backend, we typically want to test the full bundled experience (static files)
   const forceBundle = process.env.FORCE_BUNDLED_BACKEND === '1'
+  const loadLocalFrontend = process.env.TRANSCRIPTAI_LOAD_LOCAL_FRONTEND === '1'
 
   let prodIndex = path.join(process.resourcesPath, 'frontend_dist', 'index.html')
-  if (isDev && forceBundle) {
-    // In simulation mode, point to the actual local build folder
+  if (isDev && (forceBundle || loadLocalFrontend)) {
+    // In simulation mode or explicit local mode, point to the actual local build folder
     prodIndex = path.join(__dirname, '../../frontend/dist/index.html')
   }
 
-  const loadTarget = (isDev && !forceBundle) ? devUrl : `file://${prodIndex}`
+  const loadTarget = (isDev && !forceBundle && !loadLocalFrontend) ? devUrl : `file://${prodIndex}`
   lastLoadTarget = loadTarget
 
   mainWindow.once('ready-to-show', () => mainWindow && mainWindow.show())
-  mainWindow.loadURL(loadTarget)
+
+  // Use a more robust way to load files on macOS
+  if (loadTarget.startsWith('file://')) {
+    const formattedPath = loadTarget.replace('file://', '')
+    mainWindow.loadFile(formattedPath)
+  } else {
+    mainWindow.loadURL(loadTarget)
+  }
 
   if (isDev) {
     mainWindow.webContents.openDevTools({ mode: 'detach' })
@@ -983,6 +999,50 @@ ipcMain.handle('dictation:update-indicator', async (_event, payload = {}) => {
   } catch (error) {
     logLine('dictation_indicator_update_error', error.message)
     return { ok: false, message: error.message }
+  }
+})
+
+ipcMain.handle('dictation:get-mac-permissions', async () => {
+  try {
+    if (process.platform !== 'darwin') {
+      return { platform: process.platform, supported: false }
+    }
+    if (!macPermissions) {
+      return { platform: 'darwin', supported: false, error: 'module_unavailable' }
+    }
+    const accessibility = macPermissions.getAuthStatus?.('accessibility') || 'unknown'
+    const microphone = macPermissions.getAuthStatus?.('microphone') || 'unknown'
+    logLine('dictation_get_mac_permissions', { accessibility, microphone })
+    return {
+      platform: 'darwin',
+      supported: true,
+      accessibility,
+      microphone,
+    }
+  } catch (error) {
+    logLine('dictation_get_mac_permissions_error', error.message)
+    return { platform: 'darwin', supported: false, error: error.message }
+  }
+})
+
+ipcMain.handle('dictation:request-mac-permissions', async () => {
+  try {
+    if (process.platform !== 'darwin') {
+      return { platform: process.platform, supported: false }
+    }
+    if (!macPermissions) {
+      return { platform: 'darwin', supported: false, error: 'module_unavailable' }
+    }
+    const result = await promptMacPermissions()
+    return {
+      platform: 'darwin',
+      supported: true,
+      accessibility: result.accessibility,
+      microphone: result.microphone,
+    }
+  } catch (error) {
+    logLine('dictation_request_mac_permissions_error', error.message)
+    return { platform: 'darwin', supported: false, error: error.message }
   }
 })
 

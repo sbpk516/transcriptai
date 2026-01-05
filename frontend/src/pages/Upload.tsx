@@ -1131,6 +1131,13 @@ function LiveMicPanel({
       setError(null)
       console.log('[DEBUG] LiveMicPanel start() called')
       console.log('[DEBUG] Previous sessionId:', sessionId)
+
+      // Clear any previous transcript IMMEDIATELY before any async operations
+      if (onTranscriptStart) {
+        console.log('[DEBUG] LiveMicPanel start() - invoking onTranscriptStart to reset transcript state')
+        onTranscriptStart()
+      }
+
       console.log('[LIVE] start(): creating session…')
       // Start session
       const res = await apiClient.post('/api/v1/live/start')
@@ -1139,11 +1146,6 @@ function LiveMicPanel({
       setSessionId(sid)
       console.log('[DEBUG] New sessionId set:', sid)
       console.log('[LIVE] start(): session created', { sessionId: sid })
-      // Clear any previous transcript immediately for the new session
-      if (onTranscriptStart) {
-        console.log('[DEBUG] LiveMicPanel start() - invoking onTranscriptStart to reset transcript state')
-        onTranscriptStart()
-      }
 
       // Get mic
       console.log('[LIVE] start(): requesting mic via getUserMedia')
@@ -1212,7 +1214,7 @@ function LiveMicPanel({
       setRecording(false)
       setSessionId(null)
     }
-  }, [sessionId])
+  }, [sessionId, onTranscriptStart])
 
   const stop = useCallback(async () => {
     try {

@@ -8,6 +8,14 @@ type DictationSettings = {
   shortcut: string
 }
 
+type MacPermissions = {
+  platform: string
+  supported: boolean
+  accessibility?: string
+  microphone?: string
+  error?: string
+}
+
 // default shortcut is declared in SettingsValidation to keep tests/runtime aligned
 
 import type { ShortcutValidation } from './SettingsValidation'
@@ -32,6 +40,8 @@ const Settings: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [macPermissions, setMacPermissions] = useState<MacPermissions | null>(null)
+  const [permissionsLoading, setPermissionsLoading] = useState(false)
 
   const handleSettingsUpdate = useCallback((incoming: unknown) => {
     const normalized = normalizeSettings(incoming)
@@ -78,6 +88,37 @@ const Settings: React.FC = () => {
       }
     }
   }, [dictationBridge, handleSettingsUpdate])
+
+  const fetchMacPermissions = useCallback(async () => {
+    if (!dictationBridge?.getMacPermissions) {
+      return
+    }
+    try {
+      const result = await dictationBridge.getMacPermissions()
+      setMacPermissions(result)
+    } catch (fetchError) {
+      console.error('[Settings] Failed to fetch Mac permissions', fetchError)
+    }
+  }, [dictationBridge])
+
+  useEffect(() => {
+    fetchMacPermissions()
+  }, [fetchMacPermissions])
+
+  const requestMacPermissions = useCallback(async () => {
+    if (!dictationBridge?.requestMacPermissions) {
+      return
+    }
+    setPermissionsLoading(true)
+    try {
+      await dictationBridge.requestMacPermissions()
+      await fetchMacPermissions()
+    } catch (requestError) {
+      console.error('[Settings] Failed to request Mac permissions', requestError)
+    } finally {
+      setPermissionsLoading(false)
+    }
+  }, [dictationBridge, fetchMacPermissions])
 
   const applyShortcut = useCallback(async () => {
     if (!dictationBridge || !dictationSettings) {
@@ -188,6 +229,69 @@ return (
                 macOS asks for microphone and accessibility permission. Grant both so TranscriptAI can listen globally. Once accepted, holding the shortcut starts dictation instantly.
               </p>
             </div>
+
+            {macPermissions?.platform === 'darwin' && macPermissions?.supported && (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="font-semibold text-white">macOS Permissions</p>
+                  <button
+                    type="button"
+                    onClick={fetchMacPermissions}
+                    className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
+                    title="Refresh permission status"
+                  >
+                    ↻ Refresh
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-white/70">Accessibility</span>
+                    <span className={`text-sm font-medium ${
+                      macPermissions.accessibility === 'authorized'
+                        ? 'text-emerald-400'
+                        : macPermissions.accessibility === 'denied'
+                          ? 'text-rose-400'
+                          : 'text-amber-400'
+                    }`}>
+                      {macPermissions.accessibility === 'authorized' ? '✓ Granted' :
+                       macPermissions.accessibility === 'denied' ? '✗ Denied' :
+                       macPermissions.accessibility === 'not determined' ? '○ Not Set' :
+                       macPermissions.accessibility || 'Unknown'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-white/70">Microphone</span>
+                    <span className={`text-sm font-medium ${
+                      macPermissions.microphone === 'authorized'
+                        ? 'text-emerald-400'
+                        : macPermissions.microphone === 'denied'
+                          ? 'text-rose-400'
+                          : 'text-amber-400'
+                    }`}>
+                      {macPermissions.microphone === 'authorized' ? '✓ Granted' :
+                       macPermissions.microphone === 'denied' ? '✗ Denied' :
+                       macPermissions.microphone === 'not determined' ? '○ Not Set' :
+                       macPermissions.microphone || 'Unknown'}
+                    </span>
+                  </div>
+                </div>
+                {(macPermissions.accessibility !== 'authorized' || macPermissions.microphone !== 'authorized') && (
+                  <div className="mt-4">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={requestMacPermissions}
+                      disabled={permissionsLoading}
+                    >
+                      {permissionsLoading ? 'Requesting...' : 'Request Permissions'}
+                    </Button>
+                    <p className="mt-2 text-xs text-white/50">
+                      If permissions are denied, open System Settings → Privacy &amp; Security to grant access manually.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div>
               <label htmlFor="dictation-shortcut" className="block text-sm font-medium text-white/80">

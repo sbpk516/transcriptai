@@ -412,9 +412,187 @@ Going forward, measure:
 
 ---
 
+---
+
+## Issues Fixed - January 2026 Session
+
+### Issue #4: Permission Check API Mismatch
+**Category:** API Contract Violation
+**Severity:** Critical
+**Layer:** Main Process (Electron ↔ Native Module)
+**Date Fixed:** 2026-01-04
+
+#### What Happened
+```javascript
+// Code used (WRONG):
+macPermissions.isTrustedAccessibilityClient?.(false)  // Returns undefined
+macPermissions.getMicrophoneAuthorizationStatus?.()   // Returns undefined
+
+// Correct API:
+macPermissions.getAuthStatus('accessibility')  // Returns 'authorized'
+macPermissions.getAuthStatus('microphone')     // Returns 'authorized'
+```
+
+Result: Permission checks returned `undefined`, causing auto-grant logic to fail and timeout after 5 seconds.
+
+#### Root Cause
+1. **Wrong method names** for `@nut-tree-fork/node-mac-permissions` package
+2. **Optional chaining masked the error** - `?.()` returned `undefined` silently instead of throwing
+3. **No unit tests** for permission check functions
+
+#### Files Changed
+- `desktop/src/main.js` (lines 186-237): Fixed `checkMacAccessibility()` and `checkMacMicPermission()` to use `getAuthStatus()`
+- `desktop/src/main.js` (line 221): Fixed `promptMacPermissions()` to use `askForAccessibilityAccess()`
+
+#### Prevention Strategies
+- Test native module APIs before integration
+- Add explicit error handling instead of relying on optional chaining
+- Document correct API usage in code comments
+
+---
+
+### Issue #5: Background Audio Throttling (Silent Recording)
+**Category:** Electron Configuration
+**Severity:** Critical
+**Layer:** Electron Main Process (webPreferences)
+**Date Fixed:** 2026-01-04
+
+#### What Happened
+```
+Push-to-Talk scenario:
+1. User focuses on another app (e.g., Notes)
+2. User presses Command+Option shortcut
+3. Audio recording starts in background Electron window
+4. MediaRecorder captures SILENT audio (all zeros)
+5. Whisper returns "[ Silence ]"
+```
+
+Result: Push-to-talk only produced `[ Silence ]` even though user was speaking.
+
+#### Root Cause
+1. **Electron's default `backgroundThrottling: true`** throttles renderer processes when not focused
+2. **MediaRecorder API affected** - audio capture returns empty buffers when throttled
+3. **Audio files had correct duration but silent content** - made debugging confusing
+
+#### Files Changed
+- `desktop/src/main.js` (line 610): Added `backgroundThrottling: false` to `webPreferences`
+
+```javascript
+webPreferences: {
+  preload: path.join(__dirname, 'preload.js'),
+  contextIsolation: true,
+  nodeIntegration: false,
+  sandbox: true,
+  backgroundThrottling: false  // ← Critical for push-to-talk
+}
+```
+
+#### Prevention Strategies
+- Test features in their intended usage context (background vs foreground)
+- Document Electron settings that affect audio/media APIs
+- Add integration tests for background scenarios
+
+---
+
+### Issue #6: Live Recording Stale Closure
+**Category:** React Hooks Bug
+**Severity:** Medium
+**Layer:** Frontend (React Component)
+**Date Fixed:** 2026-01-04
+
+#### What Happened
+```javascript
+// onTranscriptStart called AFTER async operations
+const start = useCallback(async () => {
+  const res = await apiClient.post('/api/v1/live/start')  // Async call first
+  // ... more async code ...
+  onTranscriptStart()  // Too late! UI shows old transcript during loading
+}, [sessionId])  // Missing onTranscriptStart in dependencies!
+```
+
+Result: Old transcripts appeared when starting a new recording because UI wasn't cleared immediately.
+
+#### Root Cause
+1. **Stale closure** - `onTranscriptStart` not in dependency array
+2. **Async timing** - UI clear happened after API call instead of immediately
+3. **User perception** - Delay between clicking "Rec" and UI clearing felt broken
+
+#### Files Changed
+- `frontend/src/pages/Upload.tsx`:
+  - Moved `onTranscriptStart()` call to beginning of `start()` function
+  - Added `onTranscriptStart` to dependency array
+
+```javascript
+const start = useCallback(async () => {
+  // Clear UI IMMEDIATELY before any async operations
+  if (onTranscriptStart) {
+    onTranscriptStart()
+  }
+
+  // Now do async work...
+  const res = await apiClient.post('/api/v1/live/start')
+}, [sessionId, onTranscriptStart])  // ← Fixed dependency array
+```
+
+#### Prevention Strategies
+- Use ESLint `react-hooks/exhaustive-deps` rule
+- Clear UI state synchronously before async operations
+- Review React hooks for missing dependencies
+
+---
+
+## New Feature Added: macOS Permissions UI
+
+### Purpose
+Added a permissions status section in Settings page for macOS users to:
+- View current Accessibility and Microphone permission status
+- Request permissions with one click
+- Refresh status after granting permissions in System Settings
+
+### Files Changed
+1. `desktop/src/main.js`:
+   - Added `dictation:get-mac-permissions` IPC handler
+   - Added `dictation:request-mac-permissions` IPC handler
+
+2. `desktop/src/preload.js`:
+   - Added `getMacPermissions()` bridge method
+   - Added `requestMacPermissions()` bridge method
+
+3. `frontend/src/pages/Settings.tsx`:
+   - Added `MacPermissions` type
+   - Added permission state and loading state
+   - Added `fetchMacPermissions()` and `requestMacPermissions()` handlers
+   - Added "macOS Permissions" UI card with status indicators
+
+### UI Features
+- Color-coded status: Green (Granted), Red (Denied), Amber (Not Set)
+- "Request Permissions" button when permissions missing
+- "Refresh" button to update status
+- Helpful text directing users to System Settings for denied permissions
+
+---
+
+## Updated Issue Statistics
+
+### Issue Categories (All Sessions)
+1. **Contract Violations** (50% of issues) - Mismatched interfaces/APIs
+2. **Async/Timing Bugs** (30% of issues) - Race conditions, stale closures
+3. **Configuration Issues** (10% of issues) - Electron settings, environment
+4. **Input Validation** (10% of issues) - Too strict/brittle
+
+### Key Learnings (January 2026)
+- **Test native module APIs** before assuming method names
+- **Disable background throttling** for audio capture features
+- **Clear UI state synchronously** before async operations
+- **Always include callbacks in dependency arrays**
+
+---
+
 ## References
 - [MDN MediaRecorder API](https://developer.mozilla.org/en-US/docs/Web/API/MediaRecorder)
 - [Electron IPC Best Practices](https://www.electronjs.org/docs/latest/tutorial/ipc)
+- [Electron backgroundThrottling](https://www.electronjs.org/docs/latest/api/browser-window#winsetbackgroundthrottlingthrottling)
+- [@nut-tree-fork/node-mac-permissions](https://github.com/nicxvan/node-mac-permissions)
 - [Contract Testing with Pact](https://docs.pact.io/)
 - [Property-Based Testing](https://github.com/dubzzz/fast-check)
 
