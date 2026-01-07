@@ -126,6 +126,70 @@ def is_live_batch_only() -> bool:
     return os.getenv("TRANSCRIPTAI_LIVE_BATCH_ONLY", "0") == "1"
 
 
+def get_user_models_dir() -> Path:
+    """Get user-writable models directory for downloads.
+
+    In desktop mode: ~/Library/Application Support/TranscriptAI/models/
+    In dev/web mode: backend-cpp/models/ relative to project root
+    """
+    data_dir = os.getenv("TRANSCRIPTAI_DATA_DIR")
+    if data_dir:
+        models_dir = Path(data_dir) / "models"
+        models_dir.mkdir(parents=True, exist_ok=True)
+        return models_dir
+    # Dev/web mode: use backend-cpp/models relative to backend directory
+    return Path(__file__).parent.parent.parent / "backend-cpp" / "models"
+
+
+def get_bundled_models_dir() -> Path | None:
+    """Get read-only bundled models directory (prod DMG only).
+
+    Returns None if not in production mode or env var not set.
+    """
+    bundled = os.getenv("TRANSCRIPTAI_BUNDLED_MODELS_DIR")
+    if bundled:
+        return Path(bundled)
+    return None
+
+
+def get_model_path(model_name: str) -> Path | None:
+    """Find model file path, checking bundled dir first, then user dir, then dev dir.
+
+    Args:
+        model_name: Model name like 'tiny', 'base', 'small'
+
+    Returns:
+        Path to model file if found, None otherwise
+    """
+    filename = f"ggml-{model_name}.en.bin"
+
+    # Check bundled models first (prod DMG - read-only)
+    bundled_dir = get_bundled_models_dir()
+    if bundled_dir:
+        bundled_path = bundled_dir / filename
+        if bundled_path.exists():
+            return bundled_path
+
+    # Check user models directory (writable, for downloaded models)
+    user_dir = get_user_models_dir()
+    user_path = user_dir / filename
+    if user_path.exists():
+        return user_path
+
+    # Check dev models directory (for web/dev mode)
+    dev_dir = Path(__file__).parent.parent.parent / "backend-cpp" / "models"
+    dev_path = dev_dir / filename
+    if dev_path.exists():
+        return dev_path
+
+    return None
+
+
+def is_model_downloaded(model_name: str) -> bool:
+    """Check if a model is available (downloaded or bundled)."""
+    return get_model_path(model_name) is not None
+
+
 # Override upload_dir for desktop mode at import-time
 if os.getenv("TRANSCRIPTAI_MODE", "").lower() == "desktop":
     data_dir = _desktop_data_dir()

@@ -51,7 +51,27 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['tkinter', 'PyQt5', 'PySide2', 'IPython', 'matplotlib', 'notebook'],
+    excludes=[
+        # GUI frameworks not needed
+        'tkinter', 'PyQt5', 'PySide2', 'IPython', 'matplotlib', 'notebook',
+        # Heavy ML frameworks not needed (using whisper.cpp)
+        'tensorflow', 'tensorflow_hub', 'tensorboard', 'tf_keras',
+        'torch', 'torchvision', 'torchaudio',
+        'keras', 'jax', 'flax',
+        # Data processing not needed
+        'pyarrow', 'pandas', 'polars',
+        # Google APIs not needed
+        'googleapiclient', 'google_auth_oauthlib', 'google_cloud_storage',
+        # LLVM/Numba not needed
+        'llvmlite', 'numba',
+        # Other heavy packages
+        'scipy', 'sklearn', 'scikit-learn',
+        'h5py', 'tables',
+        'PIL', 'Pillow',
+        'cv2', 'opencv-python',
+        'boto3', 'botocore', 's3transfer',
+        'grpc', 'grpcio',
+    ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,

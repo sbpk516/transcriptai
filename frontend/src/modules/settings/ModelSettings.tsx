@@ -20,6 +20,7 @@ export const ModelSettings: React.FC = () => {
     const [models, setModels] = useState<ModelInfo[]>([])
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [restarting, setRestarting] = useState<string | null>(null)
 
     const getBackendUrl = () => {
         const port = (window as any).api?.backend?.port || 8001
@@ -73,7 +74,11 @@ export const ModelSettings: React.FC = () => {
 
     const handleSelect = async (name: string) => {
         setLoading(true)
+        setRestarting(name)
+        setError(null)
+
         try {
+            // Load model via backend API (uses whisper.cpp /load endpoint)
             const baseUrl = getBackendUrl()
             const res = await fetch(`${baseUrl}/models/select`, {
                 method: 'POST',
@@ -84,11 +89,15 @@ export const ModelSettings: React.FC = () => {
                 const msg = await res.text()
                 throw new Error(msg || 'Selection failed')
             }
+
+            // Refresh model list to show new active model
             await fetchModels()
         } catch (err) {
-            setError('Failed to select model')
+            const errorMessage = err instanceof Error ? err.message : 'Failed to switch model'
+            setError(errorMessage)
         } finally {
             setLoading(false)
+            setRestarting(null)
         }
     }
 
@@ -112,6 +121,13 @@ export const ModelSettings: React.FC = () => {
         <div className="space-y-5 text-white">
             <h2 className="gradient-heading text-2xl font-semibold">Speech recognition models</h2>
             {error && <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-rose-100">{error}</div>}
+
+            {/* Restart status message */}
+            {restarting && (
+                <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-3 text-sm text-amber-100">
+                    Switching to <strong>{restarting}</strong> model... This may take a few seconds.
+                </div>
+            )}
 
             <div className="space-y-4">
                 {unmanagedModel ? (
@@ -147,7 +163,11 @@ export const ModelSettings: React.FC = () => {
                             </div>
 
                             <div className="flex flex-wrap gap-2">
-                                {model.status === 'downloading' ? (
+                                {restarting === model.name ? (
+                                    <span className="rounded-2xl border border-amber-300/40 bg-amber-400/15 px-4 py-2 text-sm uppercase tracking-wide text-amber-100">
+                                        Switching…
+                                    </span>
+                                ) : model.status === 'downloading' ? (
                                     <span className="rounded-2xl border border-white/20 bg-white/10 px-4 py-2 text-sm uppercase tracking-wide text-white/70">
                                         Downloading…
                                     </span>
@@ -156,7 +176,7 @@ export const ModelSettings: React.FC = () => {
                                         variant="primary"
                                         size="sm"
                                         onClick={() => handleDownload(model.name)}
-                                        disabled={model.is_active && !(model.status === 'error' || model.status === 'needs_update')}
+                                        disabled={(model.is_active && !(model.status === 'error' || model.status === 'needs_update')) || !!restarting}
                                     >
                                         Download
                                     </Button>
@@ -165,7 +185,7 @@ export const ModelSettings: React.FC = () => {
                                         Selected
                                     </span>
                                 ) : (
-                                    <Button variant="secondary" size="sm" onClick={() => handleSelect(model.name)} disabled={loading}>
+                                    <Button variant="secondary" size="sm" onClick={() => handleSelect(model.name)} disabled={loading || !!restarting}>
                                         Select
                                     </Button>
                                 )}
@@ -177,7 +197,7 @@ export const ModelSettings: React.FC = () => {
 
             {!unmanagedModel && (
                 <p className="text-sm text-white/60">
-                    Note: larger models are more accurate but slower. <strong>Tiny</strong> is recommended for speed.
+                    Note: Larger models are more accurate but slower. <strong>Small</strong> is recommended for better accuracy.
                 </p>
             )}
         </div>

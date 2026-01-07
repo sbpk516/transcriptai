@@ -30,8 +30,10 @@ extraResources:
     to: .
     filter:
       - "*.dylib"
-  - from: ../backend-cpp/models
-    to: models
+  # Only bundle base model for lean DMG (~145MB)
+  # Other models (tiny, small) are downloaded on-demand to user data dir
+  - from: ../backend-cpp/models/ggml-base.en.bin
+    to: models/ggml-base.en.bin
   # ------------------------------------------
 mac:
   target: [dmg]

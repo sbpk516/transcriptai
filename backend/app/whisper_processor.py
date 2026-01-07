@@ -187,15 +187,60 @@ class WhisperProcessor:
                 "error_type": type(e).__name__
             }
 
-    def load_model(self, model_name: str):
-        # No-op in C++ architecture (model loaded at server start)
-        pass
+    def load_model(self, model_path: str) -> Dict[str, Any]:
+        """
+        Load a different model at runtime via the whisper.cpp server's /load endpoint.
+
+        Args:
+            model_path: Full path to the model file (e.g., /path/to/ggml-small.en.bin)
+
+        Returns:
+            Dict with status and any error info
+        """
+        url = f"{self.base_url}/load"
+        logger.info(f"Loading model via {url}: {model_path}")
+
+        try:
+            response = requests.post(
+                url,
+                json={"model": model_path},
+                timeout=120  # Model loading can take time
+            )
+            response.raise_for_status()
+
+            # Update internal model name
+            model_name = Path(model_path).stem  # e.g., "ggml-small.en" -> extract "small"
+            for name in ["tiny", "base", "small", "medium", "large"]:
+                if name in model_name:
+                    self.model_name = name
+                    break
+
+            logger.info(f"Model loaded successfully: {model_path}")
+            return {"status": "ok", "model_path": model_path}
+
+        except requests.exceptions.ConnectionError as e:
+            error_msg = f"Connection failed to Whisper Server at {url}"
+            logger.error(error_msg)
+            return {"status": "error", "error": error_msg}
+        except requests.exceptions.Timeout as e:
+            error_msg = f"Timeout loading model at {url}"
+            logger.error(error_msg)
+            return {"status": "error", "error": error_msg}
+        except requests.exceptions.HTTPError as e:
+            error_msg = f"HTTP error loading model: {e.response.status_code} - {e.response.text}"
+            logger.error(error_msg)
+            return {"status": "error", "error": error_msg}
+        except Exception as e:
+            error_msg = f"Failed to load model: {e}"
+            logger.error(error_msg)
+            return {"status": "error", "error": str(e)}
 
     def get_status(self) -> Dict[str, Any]:
         """
         Check health of the C++ Whisper Server.
         """
-        url = f"{self.base_url}/health"
+        # whisper.cpp server doesn't have /health - check root endpoint instead
+        url = f"{self.base_url}/"
         logger.info(f"get_status: checking {url}")
         try:
             # Fast timeout for health check

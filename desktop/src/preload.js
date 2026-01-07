@@ -322,3 +322,4 @@ contextBridge.exposeInMainWorld('transcriptaiDictation', {
     }
   },
 })
+

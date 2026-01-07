@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks
 
 from ..whisper_backend_selector import get_global_whisper_processor, get_model_preference_path
 from ..whisper_processor import WhisperProcessor
+from ..config import get_user_models_dir, get_bundled_models_dir, get_model_path, is_model_downloaded
 
 logger = logging.getLogger("transcriptai.models")
 router = APIRouter(prefix="/models", tags=["models"])
@@ -43,15 +44,14 @@ class ModelDownloadRequest(BaseModel):
     name: str
 
 
+# Supported models - limited to tiny, base, small for lean deployment
+SUPPORTED_MODELS = {"tiny", "base", "small"}
+
 # Approximate sizes for models (in MB)
 MODEL_SIZES = {
     "tiny": 75,
     "base": 145,
     "small": 480,
-    "medium": 1500,
-    "large": 3000,
-    "large-v2": 3000,
-    "large-v3": 3000,
 }
 
 # Simplified version pinning per model. Can be refined to actual HF revisions later.
@@ -59,10 +59,13 @@ MODEL_VERSIONS = {
     "tiny": "main",
     "base": "main",
     "small": "main",
-    "medium": "main",
-    "large": "main",
-    "large-v2": "main",
-    "large-v3": "main",
+}
+
+# Model download URLs from Hugging Face
+MODEL_URLS = {
+    "tiny": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin",
+    "base": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin",
+    "small": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin",
 }
 
 _JOB_LOCKS: Dict[str, threading.RLock] = {}
@@ -235,46 +238,132 @@ def _derive_model_info(
 
 @router.get("", response_model=List[ModelInfo])
 async def list_models() -> List[ModelInfo]:
-    """List available models and their status."""
-    processor = get_global_whisper_processor()
+    """List available models and their status.
 
-    if not _supports_model_management(processor):
-        backend = getattr(processor, "device", None) or "whisper.cpp"
-        runtime_model = _whisper_cpp_model_label() if isinstance(processor, WhisperProcessor) else None
-        name = runtime_model or getattr(processor, "model_name", "tiny")
-        return [
-            ModelInfo(
-                name=name,
-                is_downloaded=True,
-                is_active=True,
-                size_mb=MODEL_SIZES.get(name, 0),
-                status="downloaded",
-                progress=1.0,
-                message="Model management is unavailable for this backend.",
-                version=_desired_version(name),
-                backend=backend,
-                management_supported=False,
-                runtime_model=runtime_model,
-            )
-        ]
+    Returns supported models (tiny, base, small) with download status based on
+    file existence in bundled or user models directories.
+    """
+    # Get current active model from the processor (reflects runtime state after /load)
+    active_model = "base"  # default
+    try:
+        processor = get_global_whisper_processor()
+        if processor and hasattr(processor, 'model_name'):
+            active_model = processor.model_name
+    except Exception:
+        # Fallback to env var if processor not available
+        runtime_model = _whisper_cpp_model_label()
+        if runtime_model:
+            for model_name in SUPPORTED_MODELS:
+                if model_name in runtime_model:
+                    active_model = model_name
+                    break
 
-    available_models = processor.get_available_models()
-    active_model = processor.model_name
     job_state = _load_job_state()
-    backend = getattr(processor, "device", None)
+    backend = "whisper.cpp"
 
     result = []
-    for name in available_models:
-        result.append(_derive_model_info(processor, name, active_model, job_state, backend))
+    for model_name in sorted(SUPPORTED_MODELS):
+        # Check if model exists using config helpers
+        model_path = get_model_path(model_name)
+        is_cached = model_path is not None
+
+        state = job_state.get(model_name, {})
+        desired_version = _desired_version(model_name)
+        status: ModelStatus = state.get("status", "idle")  # type: ignore
+        message = state.get("message")
+        progress = state.get("progress")
+        version = state.get("version")
+
+        # Determine final status based on file existence and job state
+        if status == "downloading":
+            # Check for stale download
+            try:
+                updated_str = state.get("updated_at")
+                updated_dt = datetime.fromisoformat(updated_str) if updated_str else None
+                if updated_dt and (datetime.now() - updated_dt).total_seconds() > _STALE_DOWNLOAD_MINUTES * 60:
+                    status = "error"
+                    message = "Download timed out; please retry."
+            except Exception:
+                pass
+        elif is_cached and status not in ("error", "needs_update"):
+            status = "downloaded"
+            progress = 1.0
+            version = desired_version if version is None else version
+        elif status == "error":
+            pass  # Keep error status
+        else:
+            status = "idle"
+
+        result.append(ModelInfo(
+            name=model_name,
+            is_downloaded=is_cached,
+            is_active=(model_name == active_model),
+            size_mb=MODEL_SIZES.get(model_name, 0),
+            status=status,
+            progress=progress,
+            message=message,
+            version=version,
+            updated_at=state.get("updated_at"),
+            backend=backend,
+            management_supported=True,
+        ))
 
     return result
 
 
+def _download_model_file(model_name: str, target_path: Path) -> bool:
+    """Download model file from Hugging Face.
+
+    Args:
+        model_name: Model name (tiny, base, small)
+        target_path: Full path where to save the model
+
+    Returns:
+        True if download succeeded, False otherwise
+    """
+    import requests
+
+    url = MODEL_URLS.get(model_name)
+    if not url:
+        logger.error(f"No download URL for model: {model_name}")
+        return False
+
+    try:
+        logger.info(f"Downloading {model_name} from {url} to {target_path}")
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Download with streaming
+        response = requests.get(url, stream=True, timeout=600)
+        response.raise_for_status()
+
+        # Write to temp file first, then rename for atomic operation
+        temp_path = target_path.with_suffix(".tmp")
+        with open(temp_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+
+        # Rename temp to final path
+        temp_path.rename(target_path)
+        logger.info(f"Successfully downloaded {model_name} to {target_path}")
+        return True
+
+    except Exception as exc:
+        logger.error(f"Failed to download {model_name}: {exc}")
+        # Clean up partial download
+        try:
+            temp_path = target_path.with_suffix(".tmp")
+            if temp_path.exists():
+                temp_path.unlink()
+        except Exception:
+            pass
+        return False
+
+
 def _download_job(model_name: str, desired_version: str, *, has_global: bool = True) -> None:
     """Background download job with error handling and state persistence."""
-    processor = get_global_whisper_processor()
-    if not _supports_model_management(processor):
-        _mark_state(model_name, "error", message="Model management unavailable")
+    if model_name not in SUPPORTED_MODELS:
+        _mark_state(model_name, "error", message="Unsupported model")
         if has_global:
             try:
                 _GLOBAL_DOWNLOADS.release()
@@ -301,20 +390,24 @@ def _download_job(model_name: str, desired_version: str, *, has_global: bool = T
     acquired_global = has_global
     has_terminal_state = False
     try:
-        # _GLOBAL_DOWNLOADS was acquired at request time; keep track to release once
         # Heartbeat before starting
         with lock:
             _mark_state(model_name, "downloading", progress=0.0, message=None, version=desired_version)
 
-        # Heartbeat loop wrapper with timeout
+        # Determine target path (always user models dir for downloads)
+        user_models_dir = get_user_models_dir()
+        target_path = user_models_dir / f"ggml-{model_name}.en.bin"
+
+        # Download in a separate thread with heartbeat
         result: Optional[bool] = None
         stop_event = threading.Event()
 
         def _run_download():
             nonlocal result
             try:
-                result = processor.download_model(model_name)
-            except Exception:
+                result = _download_model_file(model_name, target_path)
+            except Exception as e:
+                logger.error(f"Download thread error: {e}")
                 result = False
             finally:
                 stop_event.set()
@@ -337,8 +430,8 @@ def _download_job(model_name: str, desired_version: str, *, has_global: bool = T
         # After completion, evaluate result
         if not result:
             raise RuntimeError("Download failed")
-        if not processor.is_model_cached(model_name):
-            raise RuntimeError("Model cache missing after download")
+        if not target_path.exists():
+            raise RuntimeError("Model file missing after download")
         with lock:
             _mark_state(model_name, "downloaded", progress=1.0, message=None, version=desired_version)
         has_terminal_state = True
@@ -370,12 +463,8 @@ def _download_job(model_name: str, desired_version: str, *, has_global: bool = T
 @router.post("/download")
 async def download_model(request: ModelDownloadRequest, background_tasks: BackgroundTasks):
     """Trigger background download of a model."""
-    processor = get_global_whisper_processor()
-    if not _supports_model_management(processor):
-        raise HTTPException(status_code=400, detail="Model management not available for this backend")
-
-    if request.name not in processor.get_available_models():
-        raise HTTPException(status_code=400, detail="Invalid model name")
+    if request.name not in SUPPORTED_MODELS:
+        raise HTTPException(status_code=400, detail=f"Invalid model name. Supported: {', '.join(sorted(SUPPORTED_MODELS))}")
 
     desired_version = _desired_version(request.name)
     current_state = _current_state_for_model(request.name)
@@ -384,8 +473,8 @@ async def download_model(request: ModelDownloadRequest, background_tasks: Backgr
     if current_state.get("status") == "downloading":
         raise HTTPException(status_code=409, detail="Download already in progress")
 
-    # Active models are considered downloaded unless marked error/needs_update
-    is_cached = processor.is_model_cached(request.name)
+    # Check if model already exists (bundled or downloaded)
+    is_cached = is_model_downloaded(request.name)
     if is_cached and current_state.get("status") not in ("error", "needs_update"):
         _mark_state(request.name, "downloaded", progress=1.0, message=None, version=desired_version)
         return {"status": "downloaded", "model": request.name}
@@ -409,42 +498,60 @@ async def download_model(request: ModelDownloadRequest, background_tasks: Backgr
 
 @router.post("/select")
 async def select_model(request: ModelSelectRequest):
-    """Select the active model."""
-    processor = get_global_whisper_processor()
-    if not _supports_model_management(processor):
-        raise HTTPException(status_code=400, detail="Model management not available for this backend")
+    """Select and load a different model at runtime.
 
-    if request.name not in processor.get_available_models():
-        raise HTTPException(status_code=400, detail="Invalid model name")
+    Uses the whisper.cpp server's /load endpoint to hot-swap models without
+    requiring a server restart. Works in both web and desktop modes.
+
+    Returns:
+        - status: "ok" if model loaded successfully
+        - active_model: the selected model name
+        - model_path: path to the model file
+    """
+    if request.name not in SUPPORTED_MODELS:
+        raise HTTPException(status_code=400, detail=f"Invalid model name. Supported: {', '.join(sorted(SUPPORTED_MODELS))}")
 
     state = _current_state_for_model(request.name)
-    is_cached = processor.is_model_cached(request.name)
+    model_path = get_model_path(request.name)
 
-    if not is_cached:
+    if model_path is None:
         raise HTTPException(status_code=400, detail="Model not downloaded. Please download first.")
     if state.get("status") in ("error", "needs_update"):
         raise HTTPException(status_code=400, detail="Model is unavailable; please re-download before selecting.")
 
-    # Update persistence
+    # Load model via whisper.cpp server's /load endpoint
     try:
-        pref_path = get_model_preference_path()
-        with open(pref_path, 'w') as f:
-            json.dump({"model_name": request.name}, f)
-    except Exception as e:
-        logger.error(f"Failed to save model preference: {e}")
-        raise HTTPException(status_code=500, detail="Failed to save preference")
+        processor = get_global_whisper_processor()
+        result = processor.load_model(str(model_path))
 
-    # Reload processor
-    try:
-        success = processor.reload_model(request.name)
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to reload model")
-        # Mark selected model as downloaded/healthy
-        _mark_state(request.name, "downloaded", progress=1.0, message=None, version=_desired_version(request.name))
+        if result.get("status") != "ok":
+            error_msg = result.get("error", "Unknown error loading model")
+            logger.error(f"Failed to load model {request.name}: {error_msg}")
+            raise HTTPException(status_code=500, detail=f"Failed to load model: {error_msg}")
+
+        logger.info(f"Model {request.name} loaded successfully via /load endpoint")
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to reload model: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Exception loading model {request.name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
 
-    return {"status": "ok", "active_model": request.name}
+    # Update persistence for future restarts
+    try:
+        pref_path = get_model_preference_path()
+        pref_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(pref_path, 'w') as f:
+            json.dump({"model_name": request.name}, f)
+        logger.info(f"Saved model preference: {request.name} to {pref_path}")
+    except Exception as e:
+        logger.error(f"Failed to save model preference: {e}")
+        # Don't fail the request - model is already loaded
+
+    # Mark selected model as downloaded/healthy
+    _mark_state(request.name, "downloaded", progress=1.0, message=None, version=_desired_version(request.name))
+
+    return {
+        "status": "ok",
+        "active_model": request.name,
+        "model_path": str(model_path),
+    }

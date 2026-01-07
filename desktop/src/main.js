@@ -512,6 +512,7 @@ async function startBackendProd() {
     TRANSCRIPTAI_MODE: 'desktop',
     TRANSCRIPTAI_PORT: String(port),
     TRANSCRIPTAI_DATA_DIR: dataDir(),
+    TRANSCRIPTAI_BUNDLED_MODELS_DIR: path.join(process.resourcesPath, 'models'),
     WHISPER_CPP_PORT: String(WHISPER_PORT),
     WHISPER_CPP_MODEL: whisperModelPath,
     TRANSCRIPTAI_USE_MLX: '0',
@@ -739,6 +740,13 @@ app.on('ready', async () => {
   const launchStartTime = Date.now()
   const launchStartTimestamp = new Date().toISOString()
   logLine('[LAUNCH] phase=electron_ready timestamp=' + launchStartTimestamp)
+
+  // Ensure user models directory exists
+  const userModelsDir = path.join(app.getPath('userData'), 'models')
+  if (!fs.existsSync(userModelsDir)) {
+    fs.mkdirSync(userModelsDir, { recursive: true })
+    logLine('models_dir_created', { path: userModelsDir })
+  }
 
   let dictationSettingsStartTime = Date.now()
   let initialDictationSettings = null
@@ -1083,6 +1091,7 @@ ipcMain.handle('open-update-download', async () => {
     throw error
   }
 })
+
 function getDictationManager() {
   if (!dictationManager) {
     dictationManager = new DictationManager({
