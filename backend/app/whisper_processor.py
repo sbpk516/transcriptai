@@ -3,7 +3,6 @@ Whisper integration module for TranscriptAI v2.0 (Hybrid Architecture).
 Replaces local PyTorch inference with HTTP calls to the local C++ Whisper Server.
 """
 import os
-import re
 import time
 import logging
 import requests
