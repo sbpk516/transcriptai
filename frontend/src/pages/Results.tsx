@@ -49,6 +49,7 @@ const Transcripts: React.FC = () => {
   const [sentencesPerParagraph, setSentencesPerParagraph] = useState<number>(3)
   const [copied, setCopied] = useState<boolean>(false)
   const [exportingId, setExportingId] = useState<string | null>(null)
+  const [exportError, setExportError] = useState<string | null>(null)
   // Sort toggle (newest/oldest)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
 
@@ -510,6 +511,7 @@ const Transcripts: React.FC = () => {
 
                                       try {
                                         setExportingId(result.call_id)
+                                        setExportError(null)
 
                                         const blob = await exportTranscript(result.call_id, format)
 
@@ -529,6 +531,8 @@ const Transcripts: React.FC = () => {
                                         URL.revokeObjectURL(url)
                                       } catch (err) {
                                         console.error('Export failed:', err)
+                                        setExportError(`Export failed. Please try again.`)
+                                        setTimeout(() => setExportError(null), 4000)
                                       } finally {
                                         setExportingId(null)
                                       }
@@ -553,6 +557,11 @@ const Transcripts: React.FC = () => {
                                 {copied && (
                                   <span className="rounded-full border border-emerald-300/30 px-3 py-1 text-xs text-emerald-200">
                                     Copied!
+                                  </span>
+                                )}
+                                {exportError && (
+                                  <span className="rounded-full border border-red-400/30 px-3 py-1 text-xs text-red-300">
+                                    {exportError}
                                   </span>
                                 )}
                               </div>

@@ -42,7 +42,7 @@ def remove_repeated_ngrams(text: str, n_gram_size: int = 8, max_repetitions: int
 
     result = []
     i = 0
-    repetition_count = {}
+    seen_ngrams = {}
 
     while i < len(words):
         ngram = tuple(words[i:i + n_gram_size])
@@ -52,14 +52,16 @@ def remove_repeated_ngrams(text: str, n_gram_size: int = 8, max_repetitions: int
             break
 
         ngram_key = ' '.join(ngram).lower()
-        repetition_count[ngram_key] = repetition_count.get(ngram_key, 0) + 1
+        seen_ngrams[ngram_key] = seen_ngrams.get(ngram_key, 0) + 1
 
-        if repetition_count[ngram_key] <= max_repetitions:
+        if seen_ngrams[ngram_key] <= max_repetitions:
+            # First occurrence - keep this word and advance by 1
             result.append(words[i])
             i += 1
         else:
+            # Repeated n-gram detected - skip the entire n-gram
             logger.debug(f"Removing repeated n-gram: {ngram_key[:50]}...")
-            i += 1
+            i += n_gram_size
 
     cleaned = ' '.join(result)
     if len(cleaned) < len(text) * 0.9:
