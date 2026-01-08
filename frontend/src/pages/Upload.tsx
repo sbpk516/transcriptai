@@ -768,7 +768,7 @@ const Capture: React.FC = () => {
         <Card
           title="Live Mic"
           subtitle="Capture ad-hoc sessions with animated visual feedback."
-          icon="🎤"
+          icon={<img src="./assets/Liv_mic.jpeg" alt="Live Mic" className="h-8 w-8 rounded-full object-cover" />}
           className="relative overflow-hidden"
         >
           <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-gradient-to-br from-pink-500/40 to-cyan-400/40 blur-3xl" aria-hidden />
@@ -822,7 +822,7 @@ const Capture: React.FC = () => {
         <Card
           title="Import Audio"
           subtitle="Drag & drop uploader with progress pulses."
-          icon="📼"
+          icon={<img src="./assets/Import_Audio.jpg" alt="Import Audio" className="h-8 w-8 rounded-lg object-cover" />}
           className="flex flex-col gap-6"
         >
           <div
@@ -965,7 +965,12 @@ const Capture: React.FC = () => {
         <Card
           title="Import from YouTube"
           subtitle="Paste a YouTube URL to transcribe instantly."
-          icon="📺"
+          icon={
+            <svg viewBox="0 0 28 20" className="h-6 w-8" aria-label="YouTube">
+              <rect width="28" height="20" rx="4" fill="#FF0000"/>
+              <path d="M11 14.5V5.5L19 10L11 14.5Z" fill="white"/>
+            </svg>
+          }
           className="col-span-full xl:col-span-2"
         >
           <div className="flex flex-col gap-4">

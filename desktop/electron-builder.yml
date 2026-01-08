@@ -39,6 +39,7 @@ mac:
   target: [dmg]
   category: public.app-category.productivity
   compression: store
+  icon: build/icon.icns
 win:
   target: [nsis]
   compression: maximum
