@@ -364,7 +364,7 @@ const Transcripts: React.FC = () => {
                           onClick={async (e) => {
                             e.stopPropagation();
                             try {
-                              // Optimization: If we have it in cache, copy immediately. 
+                              // Optimization: If we have it in cache, copy immediately.
                               // If not, we might need to fetch. For now, trigger fetch if needed.
                               if (!detailsCache[result.call_id]) {
                                 await fetchResultDetail(result.call_id)
@@ -384,6 +384,64 @@ const Transcripts: React.FC = () => {
                         >
                           📋
                         </Button>
+
+                        {/* Download Action */}
+                        {result.status === 'completed' && (
+                          <div className="relative">
+                            <select
+                              className="appearance-none rounded-md bg-white/10 px-2 py-1.5 pr-7 text-xs text-white/80 hover:bg-white/20 focus:outline-none focus:ring-1 focus:ring-white/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                              disabled={exportingId === result.call_id}
+                              value=""
+                              onChange={async (e) => {
+                                const format = e.target.value as ExportFormat
+                                if (!format) return
+
+                                try {
+                                  setExportingId(result.call_id)
+                                  setExportError(null)
+
+                                  const blob = await exportTranscript(result.call_id, format)
+
+                                  // Get filename from cache or result
+                                  const original = detailsCache[result.call_id]?.file_info?.original_filename || result.file_info?.original_filename
+                                  const fromPath = detailsCache[result.call_id]?.file_info?.file_path?.split?.('/')?.pop() || result.file_info?.file_path?.split('/')?.pop()
+                                  const base = (original || fromPath || result.call_id).replace(/\.[^.]+$/, '')
+
+                                  // Download the file
+                                  const url = URL.createObjectURL(blob)
+                                  const a = document.createElement('a')
+                                  a.download = `${base}.${format}`
+                                  a.href = url
+                                  document.body.appendChild(a)
+                                  a.click()
+                                  document.body.removeChild(a)
+                                  URL.revokeObjectURL(url)
+                                } catch (err) {
+                                  console.error('Export failed:', err)
+                                  setExportError(`Export failed. Please try again.`)
+                                  setTimeout(() => setExportError(null), 4000)
+                                } finally {
+                                  setExportingId(null)
+                                }
+                              }}
+                            >
+                              <option value="" disabled>
+                                {exportingId === result.call_id ? '...' : '⬇'}
+                              </option>
+                              <option value="txt">TXT</option>
+                              <option value="docx">DOCX</option>
+                              <option value="pdf">PDF</option>
+                            </select>
+                            <svg
+                              className="pointer-events-none absolute right-1 top-1/2 h-3 w-3 -translate-y-1/2 text-white/60"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </div>
+                        )}
 
                         {/* Destructive Action: Delete */}
                         <Button

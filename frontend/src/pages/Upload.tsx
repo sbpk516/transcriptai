@@ -158,9 +158,8 @@ const Capture: React.FC = () => {
         setModelStatusMessage('Preparing speech model… first load can take up to a minute.')
       } else if (nextStatus === 'not_loaded') {
         setModelStatusMessage('Speech model unavailable. Uploads will resume automatically once it finishes loading.')
-      } else if (nextStatus === 'unknown') {
-        setModelStatusMessage('Checking speech model status…')
       } else {
+        // For 'ready' or 'unknown' (after successful response), clear the message
         setModelStatusMessage(null)
       }
       const updateStateElapsed = performance.now() - updateStateStartTime
@@ -175,8 +174,9 @@ const Capture: React.FC = () => {
       console.error('[MODEL_STATUS] phase=error elapsed=' + totalElapsed.toFixed(2) + 'ms error=', error)
       console.error('[CAPTURE] Failed to fetch health status', error)
       setModelStatus('unknown')
-      const errorMsg = (error as any)?.message || 'Unknown error'
-      setModelStatusMessage(`Error checking speech model status: ${errorMsg}`)
+      // Don't show error message on connection failures - backend may still be starting
+      // Only log the error for debugging
+      setModelStatusMessage(null)
       return 'unknown'
     }
   }, [])

@@ -599,10 +599,31 @@ async function createMainWindow() {
     // Continue; UI will show an error but preload will still expose backendInfo
   }
 
+  // Set icon for dev mode (electron-builder handles this for prod builds)
+  const devIcon = isDev ? path.join(__dirname, '..', 'build', 'icon.icns') : undefined
+
+  // Set dock icon on macOS (required for dev mode)
+  if (isDev && process.platform === 'darwin' && app.dock) {
+    try {
+      const { nativeImage } = require('electron')
+      const iconPng = path.join(__dirname, '..', 'build', 'icon.iconset', 'icon_512x512.png')
+      const image = nativeImage.createFromPath(iconPng)
+      if (!image.isEmpty()) {
+        app.dock.setIcon(image)
+        logLine('dock_icon_set', iconPng)
+      } else {
+        logLine('dock_icon_empty', iconPng)
+      }
+    } catch (e) {
+      logLine('dock_icon_error', e.message)
+    }
+  }
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     show: false,
+    icon: devIcon,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

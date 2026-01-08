@@ -3,6 +3,7 @@ import { recordingsService } from '../recordingsService';
 import type { Call, PipelineResult } from '../recordingsService';
 import { AudioPlayer } from './AudioPlayer';
 import { useTranscriptionStream } from '../../../services/api/live';
+import { exportTranscript, type ExportFormat } from '../../../services/api/results';
 
 interface RecordingCardProps {
     call: Call;
@@ -28,6 +29,7 @@ export const RecordingCard: React.FC<RecordingCardProps> = ({
     const [localExpanded, setLocalExpanded] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [formattingEnabled, setFormattingEnabled] = useState(true);
+    const [isExporting, setIsExporting] = useState(false);
 
     const isExpanded = controlledExpanded !== undefined ? controlledExpanded : localExpanded;
 
@@ -197,28 +199,53 @@ export const RecordingCard: React.FC<RecordingCardProps> = ({
                                             </svg>
                                             Copy
                                         </button>
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                const text = details?.transcription?.transcription_text;
-                                                if (text) {
-                                                    const blob = new Blob([text], { type: 'text/plain' });
-                                                    const url = URL.createObjectURL(blob);
-                                                    const a = document.createElement('a');
-                                                    a.href = url;
-                                                    a.download = `${call.original_filename || 'transcript'}.txt`;
-                                                    a.click();
-                                                    URL.revokeObjectURL(url);
-                                                }
-                                            }}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors"
-                                        >
-                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                                        <div className="relative">
+                                            <select
+                                                onClick={(e) => e.stopPropagation()}
+                                                disabled={isExporting}
+                                                value=""
+                                                onChange={async (e) => {
+                                                    e.stopPropagation();
+                                                    const format = e.target.value as ExportFormat;
+                                                    if (!format) return;
+
+                                                    try {
+                                                        setIsExporting(true);
+                                                        const blob = await exportTranscript(call.call_id, format);
+
+                                                        // Get filename
+                                                        const baseName = (call.original_filename || 'transcript').replace(/\.[^.]+$/, '');
+
+                                                        // Download the file
+                                                        const url = URL.createObjectURL(blob);
+                                                        const a = document.createElement('a');
+                                                        a.download = `${baseName}.${format}`;
+                                                        a.href = url;
+                                                        document.body.appendChild(a);
+                                                        a.click();
+                                                        document.body.removeChild(a);
+                                                        URL.revokeObjectURL(url);
+                                                    } catch (err) {
+                                                        console.error('Export failed:', err);
+                                                        alert('Export failed. Please try again.');
+                                                    } finally {
+                                                        setIsExporting(false);
+                                                    }
+                                                }}
+                                                className="appearance-none flex items-center gap-1.5 pl-8 pr-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                <option value="" disabled>
+                                                    {isExporting ? 'Exporting...' : 'Download'}
+                                                </option>
+                                                <option value="txt">TXT</option>
+                                                <option value="docx">DOCX</option>
+                                                <option value="pdf">PDF</option>
+                                            </select>
+                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
                                                 <path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z" />
                                                 <path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" />
                                             </svg>
-                                            Download
-                                        </button>
+                                        </div>
                                     </div>
                                 </div>
 
