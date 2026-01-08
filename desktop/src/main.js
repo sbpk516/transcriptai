@@ -5,6 +5,9 @@ const fs = require('fs')
 const http = require('http')
 const net = require('net')
 
+// Set app name early (before ready event) for proper display in dock/taskbar
+app.setName('TranscriptAI')
+
 // --- Child Process Manager (Zombie Killer) ---
 class ChildProcessManager {
   constructor() {
@@ -114,17 +117,137 @@ let lastLoadTarget = ''
 let updateInterval = null
 let dictationSettingsReady = false
 let dictationManager = null
+let latestUpdateManifest = null
+
+// GitHub repository info for update checks
+const GITHUB_OWNER = 'sbpk516'
+const GITHUB_REPO = 'transcriptai'
 
 /**
- * Stub for auto-update check.
- * TODO: Implement actual update checking via electron-updater if needed.
+ * Get the stored latest update manifest
+ */
+function getLatestManifest() {
+  return latestUpdateManifest
+}
+
+/**
+ * Compare semantic versions. Returns:
+ *  1 if v1 > v2
+ *  0 if v1 == v2
+ * -1 if v1 < v2
+ */
+function compareVersions(v1, v2) {
+  const parts1 = v1.replace(/^v/, '').split('.').map(Number)
+  const parts2 = v2.replace(/^v/, '').split('.').map(Number)
+  for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
+    const p1 = parts1[i] || 0
+    const p2 = parts2[i] || 0
+    if (p1 > p2) return 1
+    if (p1 < p2) return -1
+  }
+  return 0
+}
+
+/**
+ * Check GitHub releases for updates
  */
 async function checkForUpdates() {
   if (isDev) {
     logLine('update_check_skip', 'Skipping update check in dev mode')
-    return
+    return null
   }
-  logLine('update_check', 'Auto-update not configured (stub)')
+
+  const currentVersion = app.getVersion()
+  logLine('update_check_start', { currentVersion, repo: `${GITHUB_OWNER}/${GITHUB_REPO}` })
+
+  try {
+    const https = require('https')
+    const releaseData = await new Promise((resolve, reject) => {
+      const options = {
+        hostname: 'api.github.com',
+        path: `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`,
+        method: 'GET',
+        headers: {
+          'User-Agent': 'TranscriptAI-Desktop',
+          'Accept': 'application/vnd.github.v3+json'
+        },
+        timeout: 10000
+      }
+
+      const req = https.request(options, (res) => {
+        let data = ''
+        res.on('data', chunk => data += chunk)
+        res.on('end', () => {
+          if (res.statusCode === 200) {
+            try {
+              resolve(JSON.parse(data))
+            } catch (e) {
+              reject(new Error('Failed to parse release data'))
+            }
+          } else if (res.statusCode === 404) {
+            resolve(null) // No releases yet
+          } else {
+            reject(new Error(`GitHub API returned ${res.statusCode}`))
+          }
+        })
+      })
+
+      req.on('error', reject)
+      req.on('timeout', () => {
+        req.destroy()
+        reject(new Error('Request timeout'))
+      })
+      req.end()
+    })
+
+    if (!releaseData) {
+      logLine('update_check_no_releases', 'No releases found')
+      return null
+    }
+
+    const latestVersion = releaseData.tag_name || releaseData.name
+    const comparison = compareVersions(latestVersion, currentVersion)
+
+    logLine('update_check_result', {
+      currentVersion,
+      latestVersion,
+      hasUpdate: comparison > 0,
+      releaseName: releaseData.name
+    })
+
+    if (comparison > 0) {
+      // Find DMG asset for macOS
+      let downloadUrl = releaseData.html_url // Fallback to release page
+      const dmgAsset = releaseData.assets?.find(a => a.name?.endsWith('.dmg'))
+      if (dmgAsset) {
+        downloadUrl = dmgAsset.browser_download_url
+      }
+
+      latestUpdateManifest = {
+        latestVersion,
+        currentVersion,
+        downloadUrl,
+        releaseUrl: releaseData.html_url,
+        releaseName: releaseData.name,
+        releaseNotes: releaseData.body,
+        publishedAt: releaseData.published_at
+      }
+
+      // Notify renderer about available update
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('update-available', latestUpdateManifest)
+        logLine('update_notification_sent', { latestVersion })
+      }
+
+      return latestUpdateManifest
+    }
+
+    latestUpdateManifest = null
+    return null
+  } catch (error) {
+    logLine('update_check_error', error.message)
+    return null
+  }
 }
 
 async function triggerDictationWarmup(port) {
@@ -602,23 +725,6 @@ async function createMainWindow() {
   // Set icon for dev mode (electron-builder handles this for prod builds)
   const devIcon = isDev ? path.join(__dirname, '..', 'build', 'icon.icns') : undefined
 
-  // Set dock icon on macOS (required for dev mode)
-  if (isDev && process.platform === 'darwin' && app.dock) {
-    try {
-      const { nativeImage } = require('electron')
-      const iconPng = path.join(__dirname, '..', 'build', 'icon.iconset', 'icon_512x512.png')
-      const image = nativeImage.createFromPath(iconPng)
-      if (!image.isEmpty()) {
-        app.dock.setIcon(image)
-        logLine('dock_icon_set', iconPng)
-      } else {
-        logLine('dock_icon_empty', iconPng)
-      }
-    } catch (e) {
-      logLine('dock_icon_error', e.message)
-    }
-  }
-
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -761,6 +867,21 @@ app.on('ready', async () => {
   const launchStartTime = Date.now()
   const launchStartTimestamp = new Date().toISOString()
   logLine('[LAUNCH] phase=electron_ready timestamp=' + launchStartTimestamp)
+
+  // Set dock icon IMMEDIATELY on macOS (before any other initialization)
+  if (process.platform === 'darwin' && app.dock) {
+    try {
+      const { nativeImage } = require('electron')
+      const iconPng = path.join(__dirname, '..', 'build', 'icon.iconset', 'icon_512x512.png')
+      const image = nativeImage.createFromPath(iconPng)
+      if (!image.isEmpty()) {
+        app.dock.setIcon(image)
+        logLine('dock_icon_set_early', iconPng)
+      }
+    } catch (e) {
+      logLine('dock_icon_early_error', e.message)
+    }
+  }
 
   // Ensure user models directory exists
   const userModelsDir = path.join(app.getPath('userData'), 'models')
