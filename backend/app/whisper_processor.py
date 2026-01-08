@@ -3,6 +3,7 @@ Whisper integration module for TranscriptAI v2.0 (Hybrid Architecture).
 Replaces local PyTorch inference with HTTP calls to the local C++ Whisper Server.
 """
 import os
+import re
 import time
 import logging
 import requests
@@ -14,6 +15,119 @@ from .config import settings
 
 # Configure logger
 logger = logging.getLogger('transcriptai.whisper_processor')
+
+
+# =============================================================================
+# Post-processing deduplication functions (safety net for hallucinations)
+# =============================================================================
+
+def remove_repeated_ngrams(text: str, n_gram_size: int = 8, max_repetitions: int = 1) -> str:
+    """
+    Remove repeated n-grams from transcription output.
+
+    Args:
+        text: Input transcription text
+        n_gram_size: Size of n-grams to detect (default 8 words)
+        max_repetitions: Maximum allowed repetitions before removal (default 1)
+
+    Returns:
+        Cleaned text with excessive repetitions removed
+    """
+    if not text or not text.strip():
+        return text
+
+    words = text.split()
+    if len(words) < n_gram_size * 2:
+        return text  # Too short to have meaningful repetitions
+
+    result = []
+    i = 0
+    repetition_count = {}
+
+    while i < len(words):
+        ngram = tuple(words[i:i + n_gram_size])
+
+        if len(ngram) < n_gram_size:
+            result.extend(words[i:])
+            break
+
+        ngram_key = ' '.join(ngram).lower()
+        repetition_count[ngram_key] = repetition_count.get(ngram_key, 0) + 1
+
+        if repetition_count[ngram_key] <= max_repetitions:
+            result.append(words[i])
+            i += 1
+        else:
+            logger.debug(f"Removing repeated n-gram: {ngram_key[:50]}...")
+            i += 1
+
+    cleaned = ' '.join(result)
+    if len(cleaned) < len(text) * 0.9:
+        logger.warning(f"Deduplication removed {len(text) - len(cleaned)} chars")
+
+    return cleaned
+
+
+def remove_consecutive_duplicate_segments(segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Remove consecutive duplicate segments from transcription output.
+
+    Args:
+        segments: List of segment dicts with 'text' field
+
+    Returns:
+        Cleaned list with consecutive duplicates removed
+    """
+    if not segments:
+        return segments
+
+    cleaned = [segments[0]]
+    duplicates_removed = 0
+
+    for seg in segments[1:]:
+        current_text = seg.get('text', '').strip().lower()
+        previous_text = cleaned[-1].get('text', '').strip().lower()
+
+        if current_text and current_text != previous_text:
+            if not (len(current_text) > 10 and current_text in previous_text):
+                cleaned.append(seg)
+            else:
+                duplicates_removed += 1
+        else:
+            duplicates_removed += 1
+
+    if duplicates_removed > 0:
+        logger.info(f"Removed {duplicates_removed} duplicate segments")
+
+    return cleaned
+
+
+def deduplicate_transcription(result: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Apply all deduplication strategies to transcription result.
+    Always enabled as a safety net against whisper hallucinations.
+
+    Args:
+        result: Transcription result dict with 'text' and optionally 'segments'
+
+    Returns:
+        Cleaned transcription result
+    """
+    if not result or result.get('error'):
+        return result
+
+    # 1. Segment deduplication (safe - always ON)
+    segments = result.get('segments', [])
+    if segments:
+        result['segments'] = remove_consecutive_duplicate_segments(segments)
+
+    # 2. N-gram text deduplication (8 words, max 1 repetition)
+    original_text = result.get('text', '')
+    if original_text:
+        result['text'] = remove_repeated_ngrams(original_text)
+
+    return result
+
 
 class WhisperProcessor:
     """
@@ -110,15 +224,28 @@ class WhisperProcessor:
 
         url = f"{self.base_url}/inference"
         
-        # Prepare params
+        # Prepare params with anti-hallucination settings
+        # Reference: https://github.com/ggml-org/whisper.cpp/discussions/1490
         data = {
             "response_format": "json",
             "temperature": kwargs.get("temperature", 0.0),
+
+            # Anti-hallucination / duplicate prevention parameters
+            "entropy_threshold": kwargs.get("entropy_threshold", 2.8),       # Reject high-entropy output (increased from 2.4)
+            "logprob_threshold": kwargs.get("logprob_threshold", -1.0),      # Reject low-confidence output
+            "no_speech_threshold": kwargs.get("no_speech_threshold", 0.6),   # Better silence detection
+            "suppress_blank": "true",                                         # Suppress blank outputs
+            "suppress_non_speech_tokens": "true",                             # Filter non-speech tokens
+
+            # Key parameters to prevent repetition loops
+            "max_context": kwargs.get("max_context", 64),                     # Limit context window - prevents loops
+            "beam_size": kwargs.get("beam_size", 5),                          # Better decoding accuracy
+            "condition_on_previous_text": "false",                            # Don't let previous text influence current
         }
-        
+
         if language:
             data["language"] = language
-        
+
         if initial_prompt:
             data["prompt"] = initial_prompt
 
@@ -154,8 +281,9 @@ class WhisperProcessor:
             
             if not result["text"].strip():
                 logger.warning(f"Whisper server returned empty text for {audio_file}")
-            
-            return result
+
+            # Apply post-processing deduplication (safety net for hallucinations)
+            return deduplicate_transcription(result)
 
         except requests.exceptions.ConnectionError as e:
             error_msg = f"Connection failed to Whisper Server at {url}. Is whisper-server running on port {self.server_port}?"
