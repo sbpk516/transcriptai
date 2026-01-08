@@ -28,6 +28,7 @@ from .live_events import event_bus, sse_format
 from .live_mic import live_sessions
 from .audio_processor import audio_processor
 from .whisper_backend_selector import get_global_whisper_processor
+from .transcript_formatter import export_transcript
 from .api import dictation_router, models
 # ... imports ...
 
@@ -1302,12 +1303,82 @@ async def get_pipeline_result_detail(
         
         logger.info(f"[RESULTS API] Successfully prepared detail response for call {call_id}")
         return {"data": result}
-        
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"[RESULTS API] Critical error in get_pipeline_result_detail: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to retrieve result details: {str(e)}")
+
+
+@app.get("/api/v1/pipeline/results/{call_id}/export")
+async def export_pipeline_result(
+    call_id: str,
+    format: str = "txt",
+    db: Session = Depends(get_db)
+):
+    """
+    Export transcript in TXT, DOCX, or PDF format.
+
+    Args:
+        call_id: The call ID to export
+        format: Export format ('txt', 'docx', 'pdf')
+
+    Returns:
+        File download response
+    """
+    try:
+        logger.info(f"[EXPORT API] Export request for call_id: {call_id}, format: {format}")
+
+        # Validate format
+        format = format.lower().strip()
+        if format not in ('txt', 'docx', 'pdf'):
+            raise HTTPException(status_code=400, detail=f"Invalid format: {format}. Use 'txt', 'docx', or 'pdf'.")
+
+        # Get call record
+        call = db.query(Call).filter(Call.call_id == call_id).first()
+        if not call:
+            logger.warning(f"[EXPORT API] Call not found: {call_id}")
+            raise HTTPException(status_code=404, detail="Call not found")
+
+        # Get transcript
+        transcript_record = db.query(Transcript).filter(Transcript.call_id == call_id).first()
+        if not transcript_record or not transcript_record.text:
+            logger.warning(f"[EXPORT API] No transcript found for call: {call_id}")
+            raise HTTPException(status_code=404, detail="Transcript not found")
+
+        # Get filename for title generation
+        original_filename = getattr(call, 'original_filename', None) or call.file_path
+        if original_filename and '/' in original_filename:
+            original_filename = original_filename.split('/')[-1]
+
+        # Generate export
+        file_bytes, content_type, suggested_filename = export_transcript(
+            text=transcript_record.text,
+            format=format,
+            filename=original_filename
+        )
+
+        logger.info(f"[EXPORT API] Successfully generated {format.upper()} for call {call_id}")
+
+        # Return as downloadable file
+        return StreamingResponse(
+            iter([file_bytes]),
+            media_type=content_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{suggested_filename}"',
+                "Content-Length": str(len(file_bytes))
+            }
+        )
+
+    except HTTPException:
+        raise
+    except ImportError as e:
+        logger.error(f"[EXPORT API] Missing dependency: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.error(f"[EXPORT API] Export failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
 
 
 @app.delete("/api/v1/pipeline/results/{call_id}")

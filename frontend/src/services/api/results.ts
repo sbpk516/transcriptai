@@ -218,3 +218,29 @@ export const clearAllResults = async (): Promise<ApiResponse> => {
     throw error
   }
 }
+
+/**
+ * Export a single transcript in TXT, DOCX, or PDF format
+ */
+export type ExportFormat = 'txt' | 'docx' | 'pdf'
+
+export const exportTranscript = async (callId: string, format: ExportFormat = 'txt'): Promise<Blob> => {
+  try {
+    console.log('[RESULTS API] Exporting transcript:', { callId, format })
+
+    const response = await apiClient.get(`/api/v1/pipeline/results/${callId}/export?format=${format}`, {
+      responseType: 'blob'
+    })
+
+    console.log('[RESULTS API] Export completed:', {
+      status: response.status,
+      contentType: response.headers['content-type'],
+      size: response.data?.size || 0
+    })
+
+    return response.data
+  } catch (error) {
+    console.error('[RESULTS API] Error exporting transcript:', error)
+    throw error
+  }
+}

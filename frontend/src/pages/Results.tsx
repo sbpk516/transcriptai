@@ -20,7 +20,7 @@ function formatFileSizeReadable(bytes: number | string): string {
 }
 import React, { useState, useEffect } from 'react'
 import { apiClient } from '@/services/api/client'
-import { deleteResult, clearAllResults } from '@/services/api/results'
+import { deleteResult, clearAllResults, exportTranscript, ExportFormat } from '@/services/api/results'
 import { formatTranscript } from '@/utils/transcript'
 import { useTranscriptionStream } from '@/services/api/live'
 import { Button, Card } from '../components/Shared'
@@ -48,6 +48,7 @@ const Transcripts: React.FC = () => {
   const [formattingOn, setFormattingOn] = useState<boolean>(true)
   const [sentencesPerParagraph, setSentencesPerParagraph] = useState<number>(3)
   const [copied, setCopied] = useState<boolean>(false)
+  const [exportingId, setExportingId] = useState<string | null>(null)
   // Sort toggle (newest/oldest)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
 
@@ -498,47 +499,57 @@ const Transcripts: React.FC = () => {
                                 >
                                   Copy
                                 </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => {
-                                    try {
-                                      const raw =
-                                        detailsCache[result.call_id]?.transcription?.transcription_text ||
-                                        ''
-                                      const text = formattingOn
-                                        ? (formatTranscript(raw, {
-                                          sentencesPerParagraph,
-                                          preserveExistingNewlines: true,
-                                        }) || []
-                                        ).join('\n\n')
-                                        : raw
-                                      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
-                                      const url = URL.createObjectURL(blob)
-                                      const original =
-                                        detailsCache[result.call_id]?.file_info?.original_filename
-                                      const fromPath =
-                                        detailsCache[result.call_id]?.file_info?.file_path
-                                          ?.split?.('/')
-                                          ?.pop()
-                                      const base = (original || fromPath || result.call_id).replace(
-                                        /\.[^.]+$/,
-                                        ''
-                                      )
-                                      const a = document.createElement('a')
-                                      a.download = `${base}.txt`
-                                      a.href = url
-                                      document.body.appendChild(a)
-                                      a.click()
-                                      document.body.removeChild(a)
-                                      URL.revokeObjectURL(url)
-                                    } catch (e) {
-                                      console.warn('Download failed', e)
-                                    }
-                                  }}
-                                >
-                                  Download
-                                </Button>
+                                <div className="relative">
+                                  <select
+                                    className="appearance-none rounded-md bg-white/10 px-3 py-1.5 pr-8 text-sm text-white/80 hover:bg-white/20 focus:outline-none focus:ring-1 focus:ring-white/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                    disabled={exportingId === result.call_id}
+                                    value=""
+                                    onChange={async (e) => {
+                                      const format = e.target.value as ExportFormat
+                                      if (!format) return
+
+                                      try {
+                                        setExportingId(result.call_id)
+
+                                        const blob = await exportTranscript(result.call_id, format)
+
+                                        // Get filename
+                                        const original = detailsCache[result.call_id]?.file_info?.original_filename
+                                        const fromPath = detailsCache[result.call_id]?.file_info?.file_path?.split?.('/')?.pop()
+                                        const base = (original || fromPath || result.call_id).replace(/\.[^.]+$/, '')
+
+                                        // Download the file
+                                        const url = URL.createObjectURL(blob)
+                                        const a = document.createElement('a')
+                                        a.download = `${base}.${format}`
+                                        a.href = url
+                                        document.body.appendChild(a)
+                                        a.click()
+                                        document.body.removeChild(a)
+                                        URL.revokeObjectURL(url)
+                                      } catch (err) {
+                                        console.error('Export failed:', err)
+                                      } finally {
+                                        setExportingId(null)
+                                      }
+                                    }}
+                                  >
+                                    <option value="" disabled>
+                                      {exportingId === result.call_id ? 'Exporting...' : 'Download as...'}
+                                    </option>
+                                    <option value="txt">TXT</option>
+                                    <option value="docx">DOCX</option>
+                                    <option value="pdf">PDF</option>
+                                  </select>
+                                  <svg
+                                    className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-white/60"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                  </svg>
+                                </div>
                                 {copied && (
                                   <span className="rounded-full border border-emerald-300/30 px-3 py-1 text-xs text-emerald-200">
                                     Copied!
