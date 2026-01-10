@@ -282,3 +282,4 @@ install_log.txt
 local-npm-cache/
 transcripts/
 node_modules/
+backend-cpp/models/*.onnx
