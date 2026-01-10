@@ -7,6 +7,7 @@
   "author": "TranscriptAI Team",
   "license": "UNLICENSED",
   "scripts": {
+    "postinstall": "mv node_modules/electron/dist/Electron.app node_modules/electron/dist/TranscriptAI.app 2>/dev/null || true && printf 'TranscriptAI.app/Contents/MacOS/Electron' > node_modules/electron/path.txt && cp build/icon.icns node_modules/electron/dist/TranscriptAI.app/Contents/Resources/electron.icns 2>/dev/null || true && plutil -replace CFBundleName -string 'TranscriptAI' node_modules/electron/dist/TranscriptAI.app/Contents/Info.plist 2>/dev/null || true && plutil -replace CFBundleDisplayName -string 'TranscriptAI' node_modules/electron/dist/TranscriptAI.app/Contents/Info.plist 2>/dev/null || true",
     "dev": "concurrently -k -n VITE,ELECTRON -c \"magenta,cyan\" \"npm --prefix ../frontend run dev\" \"wait-on tcp:127.0.0.1:3000 && electron .\"",
     "dev:dictation-debug": "TRANSCRIPTAI_DICTATION_USE_CLIPBOARD=1 concurrently -k -n VITE,ELECTRON -c \"magenta,cyan\" \"npm --prefix ../frontend run dev\" \"wait-on tcp:127.0.0.1:3000 && electron .\"",
     "start": "electron src/main.js",

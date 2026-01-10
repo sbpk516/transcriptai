@@ -13,7 +13,16 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks
 
 from ..whisper_backend_selector import get_global_whisper_processor, get_model_preference_path
 from ..whisper_processor import WhisperProcessor
-from ..config import get_user_models_dir, get_bundled_models_dir, get_model_path, is_model_downloaded
+from ..config import (
+    get_user_models_dir,
+    get_bundled_models_dir,
+    get_model_path,
+    is_model_downloaded,
+    is_vad_enabled,
+    get_vad_threshold,
+    get_vad_model_path,
+    is_vad_model_available,
+)
 
 logger = logging.getLogger("transcriptai.models")
 router = APIRouter(prefix="/models", tags=["models"])
@@ -67,6 +76,10 @@ MODEL_URLS = {
     "base": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin",
     "small": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin",
 }
+
+# VAD (Voice Activity Detection) model URL - GGML format required by whisper.cpp
+VAD_MODEL_URL = "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin"
+VAD_MODEL_SIZE_MB = 1  # ~864KB
 
 _JOB_LOCKS: Dict[str, threading.RLock] = {}
 _GLOBAL_DOWNLOADS = threading.Semaphore(2)  # simple global cap; adjust as needed
@@ -555,3 +568,103 @@ async def select_model(request: ModelSelectRequest):
         "active_model": request.name,
         "model_path": str(model_path),
     }
+
+
+# ----- VAD (Voice Activity Detection) Endpoints -----
+
+
+class VADStatusResponse(BaseModel):
+    """Response model for VAD status endpoint."""
+    enabled: bool
+    model_available: bool
+    model_path: Optional[str] = None
+    threshold: float
+
+
+@router.get("/vad", response_model=VADStatusResponse)
+async def get_vad_status() -> VADStatusResponse:
+    """Get VAD (Voice Activity Detection) status and configuration.
+
+    Returns:
+        - enabled: Whether VAD is enabled via TRANSCRIPTAI_VAD_ENABLED
+        - model_available: Whether silero-vad.onnx model is downloaded
+        - model_path: Path to VAD model if available
+        - threshold: Current VAD threshold (0.0-1.0)
+    """
+    vad_path = get_vad_model_path()
+    return VADStatusResponse(
+        enabled=is_vad_enabled(),
+        model_available=is_vad_model_available(),
+        model_path=str(vad_path) if vad_path else None,
+        threshold=get_vad_threshold(),
+    )
+
+
+@router.post("/vad/download")
+async def download_vad_model(background_tasks: BackgroundTasks):
+    """Download the Silero VAD model for voice activity detection.
+
+    The VAD model is used by whisper.cpp to filter silence before transcription,
+    which helps reduce hallucinations on audio with long silent sections.
+
+    Returns:
+        - status: "already_downloaded", "download_started", or error
+    """
+    # Check if already downloaded
+    if is_vad_model_available():
+        return {"status": "already_downloaded", "model_path": str(get_vad_model_path())}
+
+    # Acquire global download semaphore
+    if not _GLOBAL_DOWNLOADS.acquire(timeout=0):
+        raise HTTPException(status_code=409, detail="Global download limit reached. Please retry.")
+
+    try:
+        # Download to user models directory
+        target_path = get_user_models_dir() / "silero-vad.bin"
+
+        # Start background download
+        background_tasks.add_task(_download_vad_model_job, target_path)
+
+        return {"status": "download_started", "target_path": str(target_path)}
+    except Exception as e:
+        _GLOBAL_DOWNLOADS.release()
+        logger.error(f"Failed to start VAD model download: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start download: {str(e)}")
+
+
+def _download_vad_model_job(target_path: Path) -> None:
+    """Background job to download VAD model."""
+    import requests
+
+    try:
+        logger.info(f"Downloading VAD model from {VAD_MODEL_URL} to {target_path}")
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        response = requests.get(VAD_MODEL_URL, stream=True, timeout=300)
+        response.raise_for_status()
+
+        # Write to temp file first for atomic operation
+        temp_path = target_path.with_suffix(".tmp")
+        with open(temp_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+
+        # Rename temp to final path
+        temp_path.rename(target_path)
+        logger.info(f"Successfully downloaded VAD model to {target_path}")
+
+    except Exception as exc:
+        logger.error(f"Failed to download VAD model: {exc}")
+        # Clean up partial download
+        try:
+            temp_path = target_path.with_suffix(".tmp")
+            if temp_path.exists():
+                temp_path.unlink()
+        except Exception:
+            pass
+    finally:
+        try:
+            _GLOBAL_DOWNLOADS.release()
+        except Exception:
+            pass

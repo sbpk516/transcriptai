@@ -44,6 +44,13 @@ DESKTOP_DIR="$ROOT_DIR/desktop"
 BACKEND_DIR="$ROOT_DIR/backend"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 
+# Load environment variables from .env file (for Apple notarization credentials)
+if [[ -f "$ROOT_DIR/.env" ]]; then
+    set -a
+    source "$ROOT_DIR/.env"
+    set +a
+fi
+
 # Helper functions
 log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 log_success() { echo -e "${GREEN}[✓]${NC} $1"; }
@@ -120,6 +127,46 @@ else
 fi
 
 # ============================================================================
+# STEP 1.5: Code Signing & Notarization Prerequisites
+# ============================================================================
+log_step "STEP 1.5: Checking Code Signing & Notarization Setup"
+
+# Check for signing certificate
+SIGNING_IDENTITY="Developer ID Application: Balaji Sachidanandam (KVLNE2Y696)"
+if security find-identity -v -p codesigning | grep -q "$SIGNING_IDENTITY"; then
+    log_success "Signing certificate found: $SIGNING_IDENTITY"
+else
+    log_error "Signing certificate not found: $SIGNING_IDENTITY"
+    log_error "Please install the Developer ID Application certificate"
+    exit 1
+fi
+
+# Check for notarization environment variables
+NOTARIZE_READY=true
+if [[ -z "${APPLE_ID:-}" ]]; then
+    log_warning "APPLE_ID environment variable not set"
+    NOTARIZE_READY=false
+fi
+if [[ -z "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then
+    log_warning "APPLE_APP_SPECIFIC_PASSWORD environment variable not set"
+    NOTARIZE_READY=false
+fi
+if [[ -z "${APPLE_TEAM_ID:-}" ]]; then
+    log_warning "APPLE_TEAM_ID environment variable not set"
+    NOTARIZE_READY=false
+fi
+
+if [[ "$NOTARIZE_READY" == "true" ]]; then
+    log_success "Notarization credentials configured"
+else
+    log_warning "Notarization will be SKIPPED (missing credentials)"
+    log_info "To enable notarization, set these environment variables:"
+    log_info "  export APPLE_ID=\"sbpk516@gmail.com\""
+    log_info "  export APPLE_APP_SPECIFIC_PASSWORD=\"your-app-specific-password\""
+    log_info "  export APPLE_TEAM_ID=\"KVLNE2Y696\""
+fi
+
+# ============================================================================
 # STEP 2: Python Environment Setup
 # ============================================================================
 log_step "STEP 2: Setting Up Python Environment"
@@ -176,37 +223,9 @@ else
 fi
 
 # ============================================================================
-# STEP 4: MLX Virtual Environment (Optional)
+# STEP 4: Backend Build
 # ============================================================================
-log_step "STEP 4: Checking MLX Virtual Environment"
-
-if [[ ! -d "$ROOT_DIR/venv_mlx" ]]; then
-    log_warning "MLX venv not found. This is optional but recommended for Apple Silicon."
-    log_warning "The app will use PyTorch backend instead (slower)."
-    log_info "To build MLX venv later, run: bash scripts/build-mlx-venv.sh"
-else
-    # Verify MLX venv is valid
-    if [[ ! -x "$ROOT_DIR/venv_mlx/bin/python" ]]; then
-        log_warning "MLX venv exists but Python binary is missing. Recreating..."
-        bash "$ROOT_DIR/scripts/build-mlx-venv.sh" || log_warning "MLX venv build failed, continuing without it"
-    elif ! "$ROOT_DIR/venv_mlx/bin/python" -c "import mlx, mlx_whisper" 2>/dev/null; then
-        log_warning "MLX venv exists but packages are missing. Recreating..."
-        bash "$ROOT_DIR/scripts/build-mlx-venv.sh" || log_warning "MLX venv build failed, continuing without it"
-    else
-        log_success "MLX venv is ready"
-        
-        # Cleanup MLX venv to reduce size
-        if [[ -f "$ROOT_DIR/scripts/cleanup-mlx-venv.sh" ]]; then
-            log_info "Cleaning up MLX venv to reduce package size..."
-            bash "$ROOT_DIR/scripts/cleanup-mlx-venv.sh" || log_warning "MLX venv cleanup had warnings"
-        fi
-    fi
-fi
-
-# ============================================================================
-# STEP 5: Backend Build
-# ============================================================================
-log_step "STEP 5: Building Backend"
+log_step "STEP 4: Building Backend"
 
 cd "$BACKEND_DIR"
 
@@ -328,12 +347,42 @@ if [[ -n "$DMG_FILE" ]] && [[ -f "$DMG_FILE" ]]; then
     DMG_SIZE=$(du -h "$DMG_FILE" | cut -f1)
     DMG_SIZE_BYTES=$(stat -f%z "$DMG_FILE" 2>/dev/null || stat -c%s "$DMG_FILE" 2>/dev/null)
     DMG_SIZE_MB=$((DMG_SIZE_BYTES / 1024 / 1024))
-    
+
     BUILD_END=$(date +%s)
     BUILD_TIME=$((BUILD_END - BUILD_START))
     BUILD_MINUTES=$((BUILD_TIME / 60))
     BUILD_SECONDS=$((BUILD_TIME % 60))
-    
+
+    # ============================================================================
+    # STEP 12: Verify Code Signing
+    # ============================================================================
+    log_step "STEP 12: Verifying Code Signing"
+
+    # Mount DMG to verify the app inside
+    MOUNT_POINT=$(mktemp -d)
+    hdiutil attach "$DMG_FILE" -mountpoint "$MOUNT_POINT" -quiet
+
+    APP_PATH=$(find "$MOUNT_POINT" -name "*.app" -maxdepth 1 | head -1)
+    if [[ -n "$APP_PATH" ]]; then
+        # Check code signature
+        if codesign -v --deep --strict "$APP_PATH" 2>/dev/null; then
+            log_success "App code signature is valid"
+        else
+            log_warning "App code signature verification failed"
+        fi
+
+        # Check notarization (spctl assessment)
+        if spctl -a -t exec -vv "$APP_PATH" 2>&1 | grep -q "accepted"; then
+            log_success "App is notarized and accepted by Gatekeeper"
+        else
+            log_warning "App may not be notarized (Gatekeeper may block it)"
+        fi
+    fi
+
+    # Unmount DMG
+    hdiutil detach "$MOUNT_POINT" -quiet 2>/dev/null || true
+    rmdir "$MOUNT_POINT" 2>/dev/null || true
+
     echo ""
     echo -e "${GREEN}══════════════════════════════════════════════════════════${NC}"
     echo -e "${GREEN}${BOLD}  ✅ DMG FILE CREATED SUCCESSFULLY!${NC}"
@@ -351,7 +400,7 @@ if [[ -n "$DMG_FILE" ]] && [[ -f "$DMG_FILE" ]]; then
     echo -e "${CYAN}To test the DMG:${NC}"
     echo "  open \"$DMG_FILE\""
     echo ""
-    
+
     exit 0
 else
     log_error "DMG file not found after build"

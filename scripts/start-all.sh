@@ -121,8 +121,22 @@ start_backend() {
     
     # 1. Whisper Server (with model that exists)
     log "Starting C++ Whisper Server..."
-    ../backend-cpp/whisper-server -m ../backend-cpp/models/ggml-base.en.bin --port 8091 \
-        > /tmp/whisper_server.log 2>&1 &
+
+    # Build whisper-server arguments
+    WHISPER_ARGS=("-m" "../backend-cpp/models/ggml-base.en.bin" "--port" "8091")
+
+    # Add VAD flags if enabled (default) and model exists
+    VAD_MODEL_PATH="../backend-cpp/models/silero-vad.bin"
+    VAD_ENABLED="${TRANSCRIPTAI_VAD_ENABLED:-1}"  # Enabled by default
+    if [[ "$VAD_ENABLED" != "0" ]] && [[ -f "$VAD_MODEL_PATH" ]]; then
+      WHISPER_ARGS+=("--vad" "--vad-model" "$VAD_MODEL_PATH")
+      WHISPER_ARGS+=("--vad-threshold" "${TRANSCRIPTAI_VAD_THRESHOLD:-0.5}")
+      log "VAD enabled (model: $VAD_MODEL_PATH)"
+    elif [[ "$VAD_ENABLED" != "0" ]]; then
+      log "VAD enabled but model not found at $VAD_MODEL_PATH"
+    fi
+
+    ../backend-cpp/whisper-server "${WHISPER_ARGS[@]}" > /tmp/whisper_server.log 2>&1 &
     WHISPER_PID=$!
     echo $WHISPER_PID > /tmp/transcriptai_whisper.pid
     export WHISPER_CPP_PORT=8091

@@ -1,6 +1,8 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { API_ENDPOINTS, UI_CONFIG } from '../types/constants'
 import { apiClient } from '@/services/api/client'
+import { exportTranscript } from '@/services/api/results'
+import type { ExportFormat } from '@/services/api/results'
 import { Button, Card } from '../components/Shared'
 // Live batch mode: final transcript only; no SSE stream
 
@@ -33,6 +35,7 @@ const Capture: React.FC = () => {
   const [showFormattedText, setShowFormattedText] = useState<boolean>(true)
   const [modelStatus, setModelStatus] = useState<'unknown' | 'not_loaded' | 'loading' | 'ready'>('unknown')
   const [modelStatusMessage, setModelStatusMessage] = useState<string | null>(null)
+  const [exportingLive, setExportingLive] = useState<boolean>(false)
 
   // LocalStorage functions for state persistence
   const STORAGE_KEY = 'transcriptai_upload_files'
@@ -1024,9 +1027,62 @@ const Capture: React.FC = () => {
               <Button variant="ghost" size="sm" onClick={copyTranscript}>
                 Copy
               </Button>
-              <Button variant="ghost" size="sm" onClick={downloadTranscript}>
-                Download
-              </Button>
+              {liveCallId ? (
+                <div className="relative">
+                  <select
+                    className="appearance-none rounded-md bg-white/10 px-3 py-1.5 pr-7 text-sm text-white/80 hover:bg-white/20 focus:outline-none focus:ring-1 focus:ring-white/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={exportingLive}
+                    value=""
+                    onChange={async (e) => {
+                      const format = e.target.value as ExportFormat
+                      if (!format || !liveCallId) return
+
+                      try {
+                        setExportingLive(true)
+                        const blob = await exportTranscript(liveCallId, format)
+
+                        // Generate filename based on source and call ID
+                        const source = liveSource === 'mic' ? 'live-mic' : 'upload'
+                        const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-')
+                        const base = `${source}-${liveCallId.slice(0, 8) || timestamp}`
+
+                        // Download the file
+                        const url = URL.createObjectURL(blob)
+                        const a = document.createElement('a')
+                        a.download = `${base}.${format}`
+                        a.href = url
+                        document.body.appendChild(a)
+                        a.click()
+                        document.body.removeChild(a)
+                        URL.revokeObjectURL(url)
+                      } catch (err) {
+                        console.error('Export failed:', err)
+                      } finally {
+                        setExportingLive(false)
+                      }
+                    }}
+                  >
+                    <option value="" disabled>
+                      {exportingLive ? '...' : 'Download'}
+                    </option>
+                    <option value="txt">TXT</option>
+                    <option value="docx">DOCX</option>
+                    <option value="pdf">PDF</option>
+                  </select>
+                  <svg
+                    className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-white/60"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              ) : (
+                <Button variant="ghost" size="sm" onClick={downloadTranscript}>
+                  Download
+                </Button>
+              )}
               {copied && (
                 <span className="rounded-full border border-emerald-300/30 px-3 py-1 text-xs text-emerald-200">
                   Copied!

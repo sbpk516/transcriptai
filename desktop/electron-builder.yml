@@ -40,6 +40,15 @@ mac:
   category: public.app-category.productivity
   compression: store
   icon: build/icon.icns
+  # Code Signing (uses Developer ID Application certificate)
+  identity: "Balaji Sachidanandam (KVLNE2Y696)"
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # Notarization (requires env vars: APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD)
+  notarize:
+    teamId: KVLNE2Y696
 win:
   target: [nsis]
   compression: maximum

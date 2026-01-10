@@ -190,6 +190,66 @@ def is_model_downloaded(model_name: str) -> bool:
     return get_model_path(model_name) is not None
 
 
+# ----- VAD (Voice Activity Detection) Configuration -----
+
+def is_vad_enabled() -> bool:
+    """Return True if Voice Activity Detection is enabled.
+
+    Controlled by TRANSCRIPTAI_VAD_ENABLED (default: enabled).
+    Set to '0' to disable VAD.
+    """
+    return os.getenv("TRANSCRIPTAI_VAD_ENABLED", "1") != "0"
+
+
+def get_vad_threshold() -> float:
+    """Get VAD threshold (0.0-1.0). Higher = more aggressive silence filtering.
+
+    Controlled by TRANSCRIPTAI_VAD_THRESHOLD (default: 0.5).
+    """
+    try:
+        value = os.getenv("TRANSCRIPTAI_VAD_THRESHOLD", "0.5")
+        if not value:
+            return 0.5
+        return float(value)
+    except ValueError:
+        return 0.5
+
+
+def get_vad_model_path() -> Path | None:
+    """Find silero-vad.onnx model path.
+
+    Checks: bundled dir -> user dir -> dev dir.
+    Returns None if not found.
+    """
+    filename = "silero-vad.bin"
+
+    # Check bundled models first (prod DMG - read-only)
+    bundled_dir = get_bundled_models_dir()
+    if bundled_dir:
+        bundled_path = bundled_dir / filename
+        if bundled_path.exists():
+            return bundled_path
+
+    # Check user models directory (writable, for downloaded models)
+    user_dir = get_user_models_dir()
+    user_path = user_dir / filename
+    if user_path.exists():
+        return user_path
+
+    # Check dev models directory (for web/dev mode)
+    dev_dir = Path(__file__).parent.parent.parent / "backend-cpp" / "models"
+    dev_path = dev_dir / filename
+    if dev_path.exists():
+        return dev_path
+
+    return None
+
+
+def is_vad_model_available() -> bool:
+    """Check if VAD model is downloaded and available."""
+    return get_vad_model_path() is not None
+
+
 # Override upload_dir for desktop mode at import-time
 if os.getenv("TRANSCRIPTAI_MODE", "").lower() == "desktop":
     data_dir = _desktop_data_dir()

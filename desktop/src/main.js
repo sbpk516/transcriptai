@@ -84,6 +84,36 @@ function getFreePort() {
   })
 }
 
+// Helper: Kill existing TranscriptAI backend processes to avoid port conflicts
+// Only kills TranscriptAI-specific processes, not other apps on the same ports
+async function killExistingBackendProcesses() {
+  const { execSync } = require('child_process')
+  logLine('cleanup_existing_backends_start')
+
+  try {
+    // Only kill processes that match TranscriptAI-specific patterns
+    const processPatterns = [
+      'transcriptai-backend',      // Bundled backend binary
+      'uvicorn.*app\\.main:app'    // Python dev backend
+    ]
+
+    for (const pattern of processPatterns) {
+      try {
+        execSync(`pkill -f "${pattern}" 2>/dev/null || true`, { stdio: 'ignore' })
+        logLine('cleanup_killed_pattern', { pattern })
+      } catch (_) {
+        // Ignore errors - process may not exist
+      }
+    }
+
+    // Wait for ports to be released
+    await new Promise(resolve => setTimeout(resolve, 500))
+    logLine('cleanup_existing_backends_done')
+  } catch (error) {
+    logLine('cleanup_existing_backends_error', error.message)
+  }
+}
+
 // Read frontend port from root config.js (best-effort)
 function getFrontendPort() {
   try {
@@ -486,11 +516,23 @@ async function startBackendDev() {
 
   if (fs.existsSync(whisperBinary) && fs.existsSync(whisperModel)) {
     logLine('info', 'Spawning Whisper Server', { binary: whisperBinary, model: whisperModel, port: WHISPER_PORT })
-    // Spawn server with model and port
-    whisperServerProcess = processManager.spawn(whisperBinary, [
-      '-m', whisperModel,
-      '--port', String(WHISPER_PORT)
-    ], 'whisper-server')
+
+    // Build whisper-server arguments
+    const whisperArgs = ['-m', whisperModel, '--port', String(WHISPER_PORT)]
+
+    // Add VAD flags if enabled and model exists
+    const vadModelPath = path.join(__dirname, '../../backend-cpp/models/silero-vad.bin')
+    const vadEnabled = process.env.TRANSCRIPTAI_VAD_ENABLED !== '0'  // Enabled by default
+    if (vadEnabled && fs.existsSync(vadModelPath)) {
+      whisperArgs.push('--vad', '--vad-model', vadModelPath)
+      whisperArgs.push('--vad-threshold', process.env.TRANSCRIPTAI_VAD_THRESHOLD || '0.5')
+      logLine('info', 'VAD enabled', { vadModelPath })
+    } else if (vadEnabled) {
+      logLine('warn', 'VAD enabled but model not found', { vadModelPath })
+    }
+
+    // Spawn server with model, port, and optional VAD flags
+    whisperServerProcess = processManager.spawn(whisperBinary, whisperArgs, 'whisper-server')
   } else {
     logLine('warn', 'Whisper binary or model missing', { binary: whisperBinary, model: whisperModel })
   }
@@ -615,11 +657,23 @@ async function startBackendProd() {
   // Launch whisper-server with model
   if (whisperExists && modelExists) {
     logLine('STEP 5: Starting whisper-server...')
-    whisperServerProcess = processManager.spawn(whisperPath, [
-      '-m', whisperModelPath,
-      '--port', String(WHISPER_PORT)
-    ], 'whisper-server')
-    logLine('STEP 5: whisper-server spawned', { pid: whisperServerProcess.pid })
+
+    // Build whisper-server arguments
+    const whisperArgs = ['-m', whisperModelPath, '--port', String(WHISPER_PORT)]
+
+    // Add VAD flags if enabled and model exists (production mode)
+    const vadModelPath = path.join(process.resourcesPath, 'models', 'silero-vad.bin')
+    const vadEnabled = process.env.TRANSCRIPTAI_VAD_ENABLED !== '0'  // Enabled by default
+    if (vadEnabled && fs.existsSync(vadModelPath)) {
+      whisperArgs.push('--vad', '--vad-model', vadModelPath)
+      whisperArgs.push('--vad-threshold', process.env.TRANSCRIPTAI_VAD_THRESHOLD || '0.5')
+      logLine('STEP 5: VAD enabled', { vadModelPath })
+    } else if (vadEnabled) {
+      logLine('STEP 5: VAD enabled but model not found', { vadModelPath })
+    }
+
+    whisperServerProcess = processManager.spawn(whisperPath, whisperArgs, 'whisper-server')
+    logLine('STEP 5: whisper-server spawned', { pid: whisperServerProcess.pid, args: whisperArgs })
 
     // Wait for whisper-server to be ready (poll health endpoint)
     logLine('STEP 6: Waiting for whisper-server health...')
@@ -882,6 +936,9 @@ app.on('ready', async () => {
       logLine('dock_icon_early_error', e.message)
     }
   }
+
+  // Kill any existing TranscriptAI backend processes to avoid port conflicts
+  await killExistingBackendProcesses()
 
   // Ensure user models directory exists
   const userModelsDir = path.join(app.getPath('userData'), 'models')
