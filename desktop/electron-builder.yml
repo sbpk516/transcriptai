@@ -46,9 +46,9 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
-  # Notarization (requires env vars: APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD)
-  notarize:
-    teamId: KVLNE2Y696
+  # Notarization handled by afterSign hook (requires env vars: APPLE_ID, APPLE_ID_PASSWORD)
+  notarize: false
+afterSign: scripts/notarize.js
 dmg:
   contents:
     - x: 130
