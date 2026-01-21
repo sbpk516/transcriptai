@@ -1,6 +1,6 @@
 # TranscriptAI Feature Roadmap
 
-> Last updated: December 15, 2025
+> Last updated: January 20, 2026
 
 This document outlines planned features prioritized by sales impact and development effort.
 
@@ -194,6 +194,147 @@ async def get_audio_file(call_id: str):
 <audio controls src={`/api/v1/audio/${result.call_id}`} />
 <Button onClick={() => downloadAudio(result.call_id)}>Download Audio</Button>
 ```
+
+---
+
+## 🌟 "Aha Moment" Demo Features (High Priority)
+
+> These features create the "I need this" moment that drives conversions.
+
+### Meeting Memory: Semantic Search + Command Bar
+**Target Users:** All users with multiple transcripts
+**Effort:** 10-14 days
+**Sales Impact:** Primary demo feature, +40% trial-to-purchase conversion
+
+**The Demo:**
+> Open command bar. Type: *"When did we discuss the marketing budget, and what did Sarah say about it?"*
+> In 2 seconds: See 3 meetings where "budget" was mentioned, with Sarah's exact quotes highlighted.
+
+**Description:**
+Natural language search across all transcripts with speaker attribution:
+- **Command bar** (Cmd+K) for quick access anywhere in the app
+- **Full-text + semantic search** across all transcripts
+- **Speaker-attributed queries** ("What did John say about...")
+- **Timestamp linking** — click result → jump to that moment
+- **Context preview** — see surrounding conversation
+
+**Technical Approach:**
+- SQLite FTS5 for full-text search (already available)
+- Local embeddings (sentence-transformers) for semantic search
+- Speaker diarization data for attribution queries
+- Spotlight-style command bar UI component
+- Optional: Ollama/MLX for natural language query parsing
+
+**Why It Matters:**
+- This is THE demo that sells the entire product
+- Competitors don't have offline semantic search
+- Transforms TranscriptAI from "transcription tool" to "meeting memory"
+
+---
+
+### Audio Playback Synced to Transcript
+**Target Users:** All users
+**Effort:** 5-7 days
+**Sales Impact:** +20% perceived value, trust building
+
+**The Demo:**
+> Click any word in the transcript → audio plays from that exact moment.
+> See a highlighted cursor follow along as audio plays.
+
+**Description:**
+- Clickable transcript with word-level timestamps
+- Audio player synced to transcript position
+- Visual highlight showing current playback position
+- Speed controls (0.5x, 1x, 1.5x, 2x)
+
+**Technical Approach:**
+- Use Whisper's word-level timestamps (already available)
+- HTML5 audio element with currentTime binding
+- Scroll-follow and highlight animation
+- Store timestamp data in transcript JSON
+
+---
+
+### Lecture to Flashcards (One-Click)
+**Target Users:** Students (59M TAM)
+**Effort:** 7-10 days (builds on AI Summaries)
+**Sales Impact:** Viral potential, student word-of-mouth
+
+**The Demo:**
+> Drop a 1-hour lecture recording → Click "Generate Flashcards" → Get 50 Anki-ready cards in 2 minutes.
+
+**Description:**
+- One-click flashcard generation from any transcript
+- Export to Anki (.apkg), Quizlet, or plain text
+- Smart chunking: concepts, definitions, Q&A pairs
+- Customizable: number of cards, difficulty level
+
+**Technical Approach:**
+- Local LLM prompt for Q&A extraction
+- Anki .apkg format (SQLite-based, well-documented)
+- Batch processing for long transcripts
+
+---
+
+### YouTube Instant Summary
+**Target Users:** Students, Content Creators
+**Effort:** 3-5 days (builds on existing YouTube + AI features)
+**Sales Impact:** High virality, shareable output
+
+**The Demo:**
+> Paste a 2-hour podcast URL → Get timestamped chapters + key takeaways + quotable moments.
+
+**Description:**
+- Automatic chapter detection based on topic changes
+- Key takeaways (5-7 bullet points)
+- Quotable moments with timestamps
+- Shareable summary card/image
+
+---
+
+## ⚡ Tiny Killer Features (Quick Wins)
+
+> Small features (1-3 days each) with outsized impact on user experience.
+
+### Quick Wins (1-2 days each)
+
+| Feature | Description | Impact |
+|---------|-------------|--------|
+| **Filler Word Removal** | Toggle to auto-remove "um", "uh", "like", "you know" | Clean transcripts instantly |
+| **Copy with Timestamps** | One-click copy: `[0:32] "The deadline is Friday"` | Perfect for notes/citations |
+| **Auto-Title** | AI generates title from content: "Q4 Budget Discussion" | No more "Untitled Recording 47" |
+| **Confidence Highlighting** | Uncertain words shown in orange/yellow | Know what to double-check |
+| **Speaker Rename** | Click "Speaker 1" → type "Sarah" → all instances update | Personalized transcripts |
+| **Drag & Drop Anywhere** | Drop audio file anywhere on screen to start | Feels magical |
+
+### Productivity Boosters (2-3 days each)
+
+| Feature | Description | Impact |
+|---------|-------------|--------|
+| **Global Hotkey Search** | `Cmd+Shift+F` from anywhere → search all transcripts | "I know I said this somewhere..." |
+| **Batch Processing** | Drop 10 files → transcribe all → progress bar | Power user essential |
+| **Quick Notes** | Add personal annotations inline: `[NOTE: Follow up]` | Context for future self |
+| **Tags/Labels** | Tag: `#meeting` `#lecture` `#interview` → filter | Organization at scale |
+| **Pin & Archive** | Pin important to top, archive old ones | Clean workspace |
+| **Email Transcript** | One-click → opens mail app with transcript attached | Instant sharing |
+
+### Delight Features (1 day each)
+
+| Feature | Description | Impact |
+|---------|-------------|--------|
+| **Recording Stats** | "12 min recorded • 847 words • 2 speakers" | Satisfying feedback |
+| **Floating Timer** | Always-on-top mini window during recording | Know you're recording |
+| **Waveform Preview** | See audio waveform before transcribing | Visual confidence |
+| **Reading Time** | "5 min read • 1,234 words" | Quick content gauge |
+| **Duplicate Detection** | "This audio was already transcribed on Jan 15" | Prevent wasted effort |
+
+### Top 5 Recommendations (Start Here)
+
+1. **Filler Word Removal** — Instant "clean" transcript toggle
+2. **Speaker Rename** — Makes diarization 10x more useful
+3. **Copy with Timestamps** — Students/researchers will love this
+4. **Auto-Title** — Small but removes friction every time
+5. **Global Hotkey Search** — The "meeting memory" lite version
 
 ---
 
