@@ -130,7 +130,7 @@ start_backend() {
     VAD_ENABLED="${TRANSCRIPTAI_VAD_ENABLED:-1}"  # Enabled by default
     if [[ "$VAD_ENABLED" != "0" ]] && [[ -f "$VAD_MODEL_PATH" ]]; then
       WHISPER_ARGS+=("--vad" "--vad-model" "$VAD_MODEL_PATH")
-      WHISPER_ARGS+=("--vad-threshold" "${TRANSCRIPTAI_VAD_THRESHOLD:-0.5}")
+      WHISPER_ARGS+=("--vad-threshold" "${TRANSCRIPTAI_VAD_THRESHOLD:-0.3}")
       log "VAD enabled (model: $VAD_MODEL_PATH)"
     elif [[ "$VAD_ENABLED" != "0" ]]; then
       log "VAD enabled but model not found at $VAD_MODEL_PATH"

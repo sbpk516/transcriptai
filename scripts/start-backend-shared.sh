@@ -77,7 +77,7 @@ VAD_MODEL_PATH="${VAD_MODEL_PATH:-$ROOT_DIR/backend-cpp/models/silero-vad.bin}"
 VAD_ENABLED="${TRANSCRIPTAI_VAD_ENABLED:-1}"  # Enabled by default
 if [[ "$VAD_ENABLED" != "0" ]] && [[ -f "$VAD_MODEL_PATH" ]]; then
   WHISPER_ARGS+=("--vad" "--vad-model" "$VAD_MODEL_PATH")
-  WHISPER_ARGS+=("--vad-threshold" "${TRANSCRIPTAI_VAD_THRESHOLD:-0.5}")
+  WHISPER_ARGS+=("--vad-threshold" "${TRANSCRIPTAI_VAD_THRESHOLD:-0.3}")
   echo "  VAD: enabled (model: $VAD_MODEL_PATH)"
 elif [[ "$VAD_ENABLED" != "0" ]]; then
   echo "  VAD: enabled but model not found at $VAD_MODEL_PATH"

@@ -625,6 +625,11 @@ export function useDictationController(): DictationControllerState {
             if (!transcript || transcript.trim().length === 0) {
               log('debug', 'dictation transcript is empty, skipping insertion', { transcript })
               lastInsertedTranscriptRef.current = transcript
+              pushNotification({
+                severity: 'info',
+                title: 'No speech detected',
+                message: 'Try speaking louder or closer to the microphone',
+              })
               return
             }
             

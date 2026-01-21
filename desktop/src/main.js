@@ -525,7 +525,7 @@ async function startBackendDev() {
     const vadEnabled = process.env.TRANSCRIPTAI_VAD_ENABLED !== '0'  // Enabled by default
     if (vadEnabled && fs.existsSync(vadModelPath)) {
       whisperArgs.push('--vad', '--vad-model', vadModelPath)
-      whisperArgs.push('--vad-threshold', process.env.TRANSCRIPTAI_VAD_THRESHOLD || '0.5')
+      whisperArgs.push('--vad-threshold', process.env.TRANSCRIPTAI_VAD_THRESHOLD || '0.3')
       logLine('info', 'VAD enabled', { vadModelPath })
     } else if (vadEnabled) {
       logLine('warn', 'VAD enabled but model not found', { vadModelPath })
@@ -666,7 +666,7 @@ async function startBackendProd() {
     const vadEnabled = process.env.TRANSCRIPTAI_VAD_ENABLED !== '0'  // Enabled by default
     if (vadEnabled && fs.existsSync(vadModelPath)) {
       whisperArgs.push('--vad', '--vad-model', vadModelPath)
-      whisperArgs.push('--vad-threshold', process.env.TRANSCRIPTAI_VAD_THRESHOLD || '0.5')
+      whisperArgs.push('--vad-threshold', process.env.TRANSCRIPTAI_VAD_THRESHOLD || '0.3')
       logLine('STEP 5: VAD enabled', { vadModelPath })
     } else if (vadEnabled) {
       logLine('STEP 5: VAD enabled but model not found', { vadModelPath })

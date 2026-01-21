@@ -5,7 +5,8 @@
  * TRAN-17: Connect Dashboard to stats API
  */
 import React, { useEffect, useState, useCallback } from 'react'
-import { TranscriptionStats, TranscriptionData } from '../components/TranscriptionStats'
+import { TranscriptionStats } from '../components/TranscriptionStats'
+import type { TranscriptionData } from '../components/TranscriptionStats/TranscriptionStats'
 
 // API base URL - uses the backend server
 const API_BASE = 'http://localhost:8001'

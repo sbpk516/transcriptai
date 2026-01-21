@@ -204,15 +204,15 @@ def is_vad_enabled() -> bool:
 def get_vad_threshold() -> float:
     """Get VAD threshold (0.0-1.0). Higher = more aggressive silence filtering.
 
-    Controlled by TRANSCRIPTAI_VAD_THRESHOLD (default: 0.5).
+    Controlled by TRANSCRIPTAI_VAD_THRESHOLD (default: 0.3).
     """
     try:
-        value = os.getenv("TRANSCRIPTAI_VAD_THRESHOLD", "0.5")
+        value = os.getenv("TRANSCRIPTAI_VAD_THRESHOLD", "0.3")
         if not value:
-            return 0.5
+            return 0.3
         return float(value)
     except ValueError:
-        return 0.5
+        return 0.3
 
 
 def get_vad_model_path() -> Path | None:
