@@ -185,23 +185,36 @@ class AudioUploadHandler:
             raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
     
     @log_function_call
-    async def create_call_record(self, db: Session, file_path: str, original_filename: str, call_id: str, file_size_bytes: int) -> Call:
+    async def create_call_record(
+        self,
+        db: Session,
+        file_path: str,
+        original_filename: str,
+        call_id: str,
+        file_size_bytes: int,
+        source_type: str = "upload",
+        youtube_url: Optional[str] = None,
+        youtube_title: Optional[str] = None,
+    ) -> Call:
         """
         Create a call record in the database.
-        
+
         Args:
             db: Database session
             file_path: Path to saved audio file
             original_filename: Original uploaded filename
             call_id: Pre-generated call ID to use
             file_size_bytes: Size of the uploaded file in bytes
-            
+            source_type: Source of transcription ('upload', 'live', 'youtube')
+            youtube_url: YouTube video URL (for YouTube sources)
+            youtube_title: YouTube video title (for YouTube sources)
+
         Returns:
             Created Call object
         """
         # Calculate audio duration
         duration_seconds = self._calculate_audio_duration(file_path)
-        
+
         # Create call record
         call = Call(
             call_id=call_id,
@@ -210,6 +223,9 @@ class AudioUploadHandler:
             file_size_bytes=file_size_bytes,  # Store the file size
             duration=duration_seconds,  # Store the calculated duration
             status="uploaded",  # Initial status
+            source_type=source_type,  # Source type (upload, live, youtube)
+            youtube_url=youtube_url,  # YouTube-specific metadata
+            youtube_title=youtube_title,  # YouTube-specific metadata
             created_at=datetime.now()
         )
         

@@ -51,6 +51,10 @@ app.include_router(models.router, prefix="/api/v1")
 from .api.endpoints import youtube
 app.include_router(youtube.router, prefix="/api/v1/youtube", tags=["YouTube"])
 
+# Analytics/Stats API
+from .api.endpoints import stats
+app.include_router(stats.router, prefix="/api/v1/stats", tags=["Statistics"])
+
 
 # Add CORS middleware (for future frontend)
 app.add_middleware(
@@ -741,13 +745,14 @@ async def live_stop(session_id: str):
                     file_size_bytes = _os.path.getsize(combined_to_use)
                 except Exception:
                     file_size_bytes = 0
-                # Create Call row (status 'uploaded')
+                # Create Call row with source_type='live'
                 await upload_handler.create_call_record(
                     db_session,
                     combined_to_use,
                     original_filename,
                     call_id,
                     file_size_bytes,
+                    source_type="live",
                 )
             except Exception as e:
                 logger.warning(f"[MIC] failed to create Call record for {call_id}: {e}")

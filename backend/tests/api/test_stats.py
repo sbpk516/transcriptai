@@ -17,6 +17,7 @@ os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["TRANSCRIPTAI_MODE"] = "desktop"  # Use desktop mode which supports SQLite
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import sessionmaker, declarative_base
 
@@ -169,8 +170,14 @@ class TestStatsAPI:
 
     @pytest.fixture
     def client(self):
-        """Create test client."""
+        """Create test client with fresh database."""
         from backend.app.main import app
+        from backend.app.database import create_tables, engine, Base
+
+        # Ensure tables are created with the latest schema
+        Base.metadata.drop_all(bind=engine)
+        Base.metadata.create_all(bind=engine)
+
         return TestClient(app)
 
     @pytest.fixture
