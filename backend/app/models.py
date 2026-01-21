@@ -22,7 +22,7 @@ class User(Base):
 class Call(Base):
     """Call model for storing call metadata."""
     __tablename__ = "calls"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     call_id = Column(String(100), unique=True, index=True, nullable=False)
     duration = Column(Integer)  # Duration in seconds
@@ -30,6 +30,11 @@ class Call(Base):
     original_filename = Column(String(255))  # Original uploaded filename
     file_size_bytes = Column(Integer)  # File size in bytes
     status = Column(String(50), default="pending")  # pending, processing, completed, failed
+    # Source type: 'upload' (audio file), 'live' (live recording), 'youtube' (YouTube video)
+    source_type = Column(String(20), default="upload", index=True)
+    # YouTube-specific metadata (nullable for non-YouTube sources)
+    youtube_url = Column(String(500), nullable=True)
+    youtube_title = Column(String(500), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

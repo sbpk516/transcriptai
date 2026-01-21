@@ -175,9 +175,9 @@ desktop/*.zip
 desktop/*.dmg
 desktop/*.blockmap
 
-# Test files (Local only)
-test_*.py
-check_*.py
+# Test files (Local only - root level ad-hoc scripts)
+/test_*.py
+/check_*.py
 *.aiff
 *.wav
 *.mp3
