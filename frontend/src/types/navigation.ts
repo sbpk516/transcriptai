@@ -1,4 +1,4 @@
-export type AppTab = 'capture' | 'transcripts' | 'chat' | 'settings'
+export type AppTab = 'capture' | 'transcripts' | 'chat' | 'dashboard' | 'settings'
 
 export const navTabs: Array<{
   id: AppTab
@@ -8,7 +8,7 @@ export const navTabs: Array<{
 }> = [
     { id: 'capture', label: 'Capture', icon: '🎙️', glow: 'cyan' },
     { id: 'transcripts', label: 'Transcripts', icon: '📄', glow: 'purple' },
-
+    { id: 'dashboard', label: 'Dashboard', icon: '📊', glow: 'emerald' },
     { id: 'settings', label: 'Settings', icon: '⚙️', glow: 'blue' },
   ]
 

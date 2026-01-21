@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button, Card } from '../components/Shared'
 import { DEFAULT_SHORTCUT, validateShortcut } from './SettingsValidation'
 import { ModelSettings } from '../modules/settings/ModelSettings'
+import { TranscriptionStats, type TranscriptionData } from '../components/TranscriptionStats'
 
 type DictationSettings = {
   enabled: boolean
@@ -19,6 +20,9 @@ type MacPermissions = {
 // default shortcut is declared in SettingsValidation to keep tests/runtime aligned
 
 import type { ShortcutValidation } from './SettingsValidation'
+
+// API base URL - uses the backend server
+const API_BASE = 'http://localhost:8001'
 
 function normalizeSettings(candidate: unknown): DictationSettings {
   const source = (candidate && typeof candidate === 'object' ? candidate : {}) as Partial<DictationSettings>
@@ -42,6 +46,8 @@ const Settings: React.FC = () => {
   const [saving, setSaving] = useState(false)
   const [macPermissions, setMacPermissions] = useState<MacPermissions | null>(null)
   const [permissionsLoading, setPermissionsLoading] = useState(false)
+  const [stats, setStats] = useState<TranscriptionData | undefined>(undefined)
+  const [statsLoading, setStatsLoading] = useState(true)
 
   const handleSettingsUpdate = useCallback((incoming: unknown) => {
     const normalized = normalizeSettings(incoming)
@@ -104,6 +110,26 @@ const Settings: React.FC = () => {
   useEffect(() => {
     fetchMacPermissions()
   }, [fetchMacPermissions])
+
+  // Fetch transcription stats for compact widget
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        setStatsLoading(true)
+        const response = await fetch(`${API_BASE}/api/v1/stats`)
+        if (response.ok) {
+          const data = await response.json()
+          setStats(data)
+        }
+      } catch (err) {
+        console.error('[Settings] Failed to fetch stats:', err)
+      } finally {
+        setStatsLoading(false)
+      }
+    }
+
+    fetchStats()
+  }, [])
 
   const requestMacPermissions = useCallback(async () => {
     if (!dictationBridge?.requestMacPermissions) {
@@ -347,6 +373,10 @@ return (
           </p>
           <ModelSettings />
         </div>
+      </Card>
+
+    <Card title="Transcription Activity" subtitle="Quick overview of your transcription usage." icon="📊">
+        <TranscriptionStats data={stats} variant="compact" loading={statsLoading} />
       </Card>
     </div>
   )

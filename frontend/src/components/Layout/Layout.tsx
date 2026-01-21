@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Header } from '../Header'
 import { Sidebar } from '../Sidebar'
-import { Capture, Transcripts, Settings } from '../../pages'
+import { Capture, Transcripts, Settings, Dashboard } from '../../pages'
 import { DictationOverlay } from '../../modules/dictation/dictationOverlay'
 import type { AppTab, UpdateBridge, UpdateManifest } from '../../types'
 
@@ -79,6 +79,8 @@ const Layout: React.FC = () => {
         return <Capture />
       case 'transcripts':
         return <Transcripts />
+      case 'dashboard':
+        return <Dashboard />
       case 'settings':
         return <Settings />
       default:
