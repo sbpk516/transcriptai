@@ -337,6 +337,25 @@ else
 fi
 
 # ============================================================================
+# STEP 10.5: Staple DMG (attach notarization ticket)
+# ============================================================================
+log_step "STEP 10.5: Stapling DMG with Notarization Ticket"
+
+DMG_FOR_STAPLE=$(find "$DESKTOP_DIR/dist" -name "TranscriptAI-*.dmg" -o -name "transcriptai-*.dmg" 2>/dev/null | head -1)
+
+if [[ -n "$DMG_FOR_STAPLE" ]] && [[ -f "$DMG_FOR_STAPLE" ]]; then
+    log_info "Stapling notarization ticket to DMG..."
+    if xcrun stapler staple "$DMG_FOR_STAPLE"; then
+        log_success "DMG stapled successfully"
+    else
+        log_warning "DMG stapling failed (notarization may not have completed)"
+        log_info "Users with internet can still verify online"
+    fi
+else
+    log_warning "DMG file not found for stapling"
+fi
+
+# ============================================================================
 # STEP 11: Verification
 # ============================================================================
 log_step "STEP 11: Verifying DMG File"

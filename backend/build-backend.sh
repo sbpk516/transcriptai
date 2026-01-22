@@ -42,3 +42,19 @@ echo "✅ Environment looks good: $($PYTHON_EXEC --version) (uvicorn found)"
 # Using python3 -m PyInstaller ensures we use the active python environment (where deps are installed)
 # instead of a potentially mismatched pyinstaller binary on the PATH.
 python3 -m PyInstaller -y --clean transcriptai-backend.spec
+
+# Move built binary from dist/ to bin/
+if [[ -d "$HERE/dist/transcriptai-backend" ]]; then
+    echo "Moving built binary to $OUT..."
+    rm -rf "$OUT/transcriptai-backend"
+    mv "$HERE/dist/transcriptai-backend" "$OUT/"
+    echo "✅ Backend binary available in: $OUT/transcriptai-backend"
+elif [[ -f "$HERE/dist/transcriptai-backend" ]]; then
+    echo "Moving built binary to $OUT..."
+    rm -f "$OUT/transcriptai-backend"
+    mv "$HERE/dist/transcriptai-backend" "$OUT/"
+    echo "✅ Backend binary available in: $OUT/transcriptai-backend"
+else
+    echo "❌ ERROR: Built binary not found in $HERE/dist/"
+    exit 1
+fi

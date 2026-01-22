@@ -17,12 +17,11 @@ extraResources:
     to: backend
     filter:
       - "**/*"
-  # Include cache manager for PyInstaller bundle caching
-  - from: ../backend/pyinstaller_cache_manager.js
-    to: backend/pyinstaller_cache_manager.js
-  # Include native helper for global key listener (macOS)
+  # Include native helper for global key listener (macOS only)
   - from: node_modules/node-global-key-listener/bin
     to: bin
+    filter:
+      - "MacKeyServer"
   # --- Phase 1 & 3: C++ Binaries & Models ---
   - from: ../backend-cpp/whisper-server
     to: whisper-server
