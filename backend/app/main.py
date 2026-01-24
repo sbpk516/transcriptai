@@ -590,19 +590,63 @@ async def live_chunk(session_id: str, file: UploadFile = File(...)):
                     logger.warning(f"[MIC] merge failed for idx={idx}: {merge_err}")
             
             if wav_path_to_transcribe:
+                # VAD check - skip silent chunks to prevent hallucinations
+                from .config import is_vad_enabled
+                if is_vad_enabled():
+                    try:
+                        from .audio_enhancer import should_skip_chunk
+                        if should_skip_chunk(wav_path_to_transcribe):
+                            logger.info(f"[MIC] chunk skip session_id={session_id} idx={idx} reason=no-speech-vad")
+                            live_sessions.set_partial(session_id, idx, "")
+                            # Cleanup temp files
+                            if temp_merged_path and temp_merged_path.exists():
+                                try:
+                                    os.unlink(temp_merged_path)
+                                except: pass
+                            if idx > 0 and wav_path_to_transcribe and os.path.exists(wav_path_to_transcribe):
+                                try:
+                                    os.unlink(wav_path_to_transcribe)
+                                except: pass
+                            return {"ok": True, "chunk_index": idx, "skipped": True, "reason": "no_speech"}
+                    except Exception as vad_err:
+                        logger.warning(f"[MIC] VAD check failed idx={idx}, proceeding: {vad_err}")
+
                 # Perform transcription
                 part = whisper_processor.transcribe_audio(wav_path_to_transcribe)
                 full_text = part.get("text", "") if part.get("transcription_success") else ""
                 
                 # Logic to extract only NEW text:
                 # If idx > 0, the transcription includes the Header (Chunk 0) text.
-                # We should subtract the header text to avoid duplication in frontend.
+                # We should subtract the accumulated text to avoid duplication in frontend.
                 text_to_emit = full_text
                 if idx > 0:
-                    header_text = sess.partials[0] if len(sess.partials) > 0 else ""
-                    if header_text and full_text.startswith(header_text):
-                        text_to_emit = full_text[len(header_text):].strip()
-                    # Fallback: if heuristics fail, just stick with full_text (or try overlap detection - kept simple for now)
+                    # Get all accumulated text from previous chunks
+                    accumulated_text = " ".join([p for p in sess.partials[:idx] if p]).strip()
+
+                    # Try exact prefix match first
+                    if accumulated_text and full_text.startswith(accumulated_text):
+                        text_to_emit = full_text[len(accumulated_text):].strip()
+                    elif accumulated_text:
+                        # Fuzzy overlap detection: find where accumulated_text ends in full_text
+                        # Normalize both strings for comparison
+                        norm_acc = accumulated_text.lower().replace(".", "").replace(",", "").strip()
+                        norm_full = full_text.lower().replace(".", "").replace(",", "").strip()
+
+                        # Try to find overlap by checking if accumulated appears near start
+                        if norm_full.startswith(norm_acc):
+                            # Find approximate cut point in original full_text
+                            text_to_emit = full_text[len(accumulated_text):].strip()
+                        else:
+                            # Last resort: look for the last few words of accumulated in full_text
+                            acc_words = accumulated_text.split()
+                            if len(acc_words) >= 3:
+                                search_phrase = " ".join(acc_words[-3:]).lower()
+                                norm_full_lower = full_text.lower()
+                                find_idx = norm_full_lower.find(search_phrase)
+                                if find_idx != -1:
+                                    cut_point = find_idx + len(search_phrase)
+                                    text_to_emit = full_text[cut_point:].strip()
+                                    logger.debug(f"[MIC] fuzzy dedup: found overlap at {find_idx}, cut at {cut_point}")
                 
                 logger.info(f"[MIC] chunk transcribed session_id={session_id} idx={idx} full_len={len(full_text)} emit_len={len(text_to_emit)}")
                 live_sessions.set_partial(session_id, idx, text_to_emit)

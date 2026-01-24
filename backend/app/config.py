@@ -121,9 +121,10 @@ def is_live_mic_enabled() -> bool:
 def is_live_batch_only() -> bool:
     """Return True to disable chunk STT/SSE and transcribe only at stop.
 
-    Controlled by TRANSCRIPTAI_LIVE_BATCH_ONLY=1. Defaults to False.
+    Controlled by TRANSCRIPTAI_LIVE_BATCH_ONLY. Defaults to True (saves to DB).
+    Set to 0 to enable legacy incremental mode (does not save to Results).
     """
-    return os.getenv("TRANSCRIPTAI_LIVE_BATCH_ONLY", "0") == "1"
+    return os.getenv("TRANSCRIPTAI_LIVE_BATCH_ONLY", "1") == "1"
 
 
 def get_user_models_dir() -> Path:
@@ -248,6 +249,35 @@ def get_vad_model_path() -> Path | None:
 def is_vad_model_available() -> bool:
     """Check if VAD model is downloaded and available."""
     return get_vad_model_path() is not None
+
+
+# ----- Noise Suppression Configuration -----
+
+def is_noise_suppression_enabled() -> bool:
+    """Return True if noise suppression is enabled.
+
+    Controlled by TRANSCRIPTAI_NOISE_ENABLED (default: enabled).
+    Set to '0' to disable noise suppression.
+    """
+    return os.getenv("TRANSCRIPTAI_NOISE_ENABLED", "1") != "0"
+
+
+def get_noise_reduction_strength() -> float:
+    """Get noise reduction strength (0.0-1.0).
+
+    Controlled by TRANSCRIPTAI_NOISE_STRENGTH (default: 0.5).
+    - 0.0 = no reduction
+    - 0.5 = moderate (recommended)
+    - 1.0 = aggressive (may affect speech quality)
+    """
+    try:
+        value = os.getenv("TRANSCRIPTAI_NOISE_STRENGTH", "0.5")
+        if not value:
+            return 0.5
+        strength = float(value)
+        return max(0.0, min(1.0, strength))  # Clamp to valid range
+    except ValueError:
+        return 0.5
 
 
 # Override upload_dir for desktop mode at import-time

@@ -405,12 +405,38 @@ class AudioProcessingPipeline:
             
             # Determine output path (conversion_result returns it on success)
             processed_file_path = conversion_result.get("output_path") if conversion_result.get("conversion_success") else file_path
-            
+
+            # Apply audio enhancement (noise suppression + VAD) if enabled
+            enhancement_result = None
+            try:
+                from .config import is_vad_enabled, is_noise_suppression_enabled
+                if is_vad_enabled() or is_noise_suppression_enabled():
+                    from .audio_enhancer import enhance_audio
+                    enhancement_result = enhance_audio(processed_file_path)
+
+                    if enhancement_result.noise_reduced:
+                        processed_file_path = enhancement_result.enhanced_path
+                        logger.info(f"Audio enhancement applied for call_id={call_id}")
+
+                    if enhancement_result.vad_applied:
+                        logger.info(f"VAD analysis: speech_ratio={enhancement_result.speech_ratio:.2%}, has_speech={enhancement_result.speech_detected}")
+
+                    if enhancement_result.should_skip:
+                        logger.warning(f"No speech detected in call_id={call_id}, transcription may be empty")
+            except Exception as enhance_err:
+                logger.warning(f"Audio enhancement failed for call_id={call_id}, continuing: {enhance_err}")
+
             result = {
                 "analysis": analysis_result,
                 "conversion": conversion_result,
                 "segments": segments_result,
-                "processed_file_path": processed_file_path
+                "processed_file_path": processed_file_path,
+                "enhancement": {
+                    "applied": enhancement_result is not None,
+                    "noise_reduced": enhancement_result.noise_reduced if enhancement_result else False,
+                    "vad_applied": enhancement_result.vad_applied if enhancement_result else False,
+                    "speech_ratio": enhancement_result.speech_ratio if enhancement_result else 1.0
+                } if enhancement_result else None
             }
             
             # Update pipeline data with processing results

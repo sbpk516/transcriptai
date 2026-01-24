@@ -10,6 +10,10 @@ export const RecordingsView: React.FC = () => {
     const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
     const [searchQuery, setSearchQuery] = useState('');
 
+    // Selection state for multi-delete
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [isDeleting, setIsDeleting] = useState(false);
+
     // Detail view state
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [detailsCache, setDetailsCache] = useState<Record<string, PipelineResult>>({});
@@ -78,10 +82,63 @@ export const RecordingsView: React.FC = () => {
             await recordingsService.deleteCall(id);
             // Optimistic update
             setCalls(calls.filter(call => call.call_id !== id));
+            // Remove from selection if selected
+            setSelectedIds(prev => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+            });
         } catch (err) {
             console.error('Failed to delete call:', err);
             // Re-fetch to ensure sync (optional)
             fetchCalls();
+        }
+    };
+
+    const handleSelect = (id: string, selected: boolean) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (selected) {
+                next.add(id);
+            } else {
+                next.delete(id);
+            }
+            return next;
+        });
+    };
+
+    const handleSelectAll = (selected: boolean) => {
+        if (selected) {
+            setSelectedIds(new Set(filteredCalls.map(c => c.call_id)));
+        } else {
+            setSelectedIds(new Set());
+        }
+    };
+
+    const handleBulkDelete = async () => {
+        if (selectedIds.size === 0) return;
+
+        const count = selectedIds.size;
+        if (!confirm(`Are you sure you want to delete ${count} recording${count > 1 ? 's' : ''}? This cannot be undone.`)) {
+            return;
+        }
+
+        setIsDeleting(true);
+        try {
+            const { deleted, failed } = await recordingsService.deleteCalls(Array.from(selectedIds));
+
+            // Remove deleted items from state
+            setCalls(prev => prev.filter(call => !deleted.includes(call.call_id)));
+            setSelectedIds(new Set());
+
+            if (failed.length > 0) {
+                alert(`Failed to delete ${failed.length} recording${failed.length > 1 ? 's' : ''}. Please try again.`);
+            }
+        } catch (err) {
+            console.error('Bulk delete failed:', err);
+            fetchCalls();
+        } finally {
+            setIsDeleting(false);
         }
     };
 
@@ -149,8 +206,58 @@ export const RecordingsView: React.FC = () => {
 
                 {/* Toolbar */}
                 <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2 text-sm font-medium text-blue-400">
-                        <span>Transcripts ({filteredCalls.length})</span>
+                    <div className="flex items-center gap-4">
+                        {/* Select All Checkbox */}
+                        {filteredCalls.length > 0 && (
+                            <label className="flex items-center gap-2 cursor-pointer group">
+                                <input
+                                    type="checkbox"
+                                    checked={filteredCalls.length > 0 && selectedIds.size === filteredCalls.length}
+                                    ref={(el) => {
+                                        if (el) {
+                                            el.indeterminate = selectedIds.size > 0 && selectedIds.size < filteredCalls.length;
+                                        }
+                                    }}
+                                    onChange={(e) => handleSelectAll(e.target.checked)}
+                                    className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-1 cursor-pointer"
+                                />
+                                <span className="text-xs text-slate-400 group-hover:text-slate-300 transition-colors">
+                                    Select all
+                                </span>
+                            </label>
+                        )}
+
+                        {/* Selection Info & Bulk Delete */}
+                        {selectedIds.size > 0 && (
+                            <div className="flex items-center gap-3">
+                                <span className="text-xs text-slate-300">
+                                    {selectedIds.size} selected
+                                </span>
+                                <button
+                                    onClick={handleBulkDelete}
+                                    disabled={isDeleting}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 rounded-lg transition-colors border border-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {isDeleting ? (
+                                        <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                    ) : (
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                                            <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 001.5.06l.3-7.5z" clipRule="evenodd" />
+                                        </svg>
+                                    )}
+                                    {isDeleting ? 'Deleting...' : 'Delete selected'}
+                                </button>
+                            </div>
+                        )}
+
+                        {selectedIds.size === 0 && (
+                            <div className="flex items-center gap-2 text-sm font-medium text-blue-400">
+                                <span>Transcripts ({filteredCalls.length})</span>
+                            </div>
+                        )}
                     </div>
 
                     <div className="flex items-center gap-4">
@@ -209,7 +316,8 @@ export const RecordingsView: React.FC = () => {
                             loadingDetails={loadingDetails[call.call_id]}
                             onReanalyze={handleReanalyze}
                             isReanalyzing={reanalyzing[call.call_id]}
-
+                            isSelected={selectedIds.has(call.call_id)}
+                            onSelect={handleSelect}
                         />
                     ))
                 )}

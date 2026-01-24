@@ -1344,11 +1344,13 @@ function LiveMicPanel({
       const msg = e instanceof Error ? e.message : 'Failed to generate transcript'
       console.log('[DEBUG] LiveMicPanel stop() - error occurred, calling onTranscriptError with:', msg)
       onTranscriptError && onTranscriptError(msg)
+      // Only clear session on error - success path already clears it at line 1337
+      setSessionId(null)
     } finally {
       setProcessingFinal(false)
-      setSessionId(null)
+      // Don't clear sessionId here - it causes race condition with next recording's start()
     }
-  }, [sessionId, onTranscriptStart, onTranscriptComplete, onTranscriptError])
+  }, [sessionId, onTranscriptComplete, onTranscriptError])
 
   return (
     <div className="space-y-4">

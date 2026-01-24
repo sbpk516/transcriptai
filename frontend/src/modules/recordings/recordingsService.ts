@@ -110,6 +110,25 @@ export const recordingsService = {
         }
     },
 
+    deleteCalls: async (callIds: string[]): Promise<{ deleted: string[]; failed: string[] }> => {
+        const deleted: string[] = [];
+        const failed: string[] = [];
+
+        await Promise.all(
+            callIds.map(async (callId) => {
+                try {
+                    await apiClient.delete(`/api/v1/calls/${callId}`);
+                    deleted.push(callId);
+                } catch (error) {
+                    console.error(`Failed to delete call ${callId}:`, error);
+                    failed.push(callId);
+                }
+            })
+        );
+
+        return { deleted, failed };
+    },
+
     getAudioUrl: (callId: string): string => {
         // If API_BASE_URL already has a trailing slash, handle it (though usually it doesn't)
         const base = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;

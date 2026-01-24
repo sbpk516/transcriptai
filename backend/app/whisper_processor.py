@@ -20,13 +20,13 @@ logger = logging.getLogger('transcriptai.whisper_processor')
 # Post-processing deduplication functions (safety net for hallucinations)
 # =============================================================================
 
-def remove_repeated_ngrams(text: str, n_gram_size: int = 8, max_repetitions: int = 1) -> str:
+def remove_repeated_ngrams(text: str, n_gram_size: int = 5, max_repetitions: int = 1) -> str:
     """
     Remove repeated n-grams from transcription output.
 
     Args:
         text: Input transcription text
-        n_gram_size: Size of n-grams to detect (default 8 words)
+        n_gram_size: Size of n-grams to detect (default 5 words - catches shorter phrases)
         max_repetitions: Maximum allowed repetitions before removal (default 1)
 
     Returns:
@@ -69,6 +69,117 @@ def remove_repeated_ngrams(text: str, n_gram_size: int = 8, max_repetitions: int
     return cleaned
 
 
+def remove_duplicate_sentences(text: str) -> str:
+    """
+    Remove duplicate sentences from transcription output.
+
+    Whisper often repeats entire sentences, especially in longer recordings.
+    This function removes exact and near-duplicate sentences.
+
+    Args:
+        text: Input transcription text
+
+    Returns:
+        Text with duplicate sentences removed
+    """
+    import re
+
+    if not text or not text.strip():
+        return text
+
+    # Split into sentences (handle . ! ? and newlines)
+    sentence_pattern = r'(?<=[.!?])\s+|\n+'
+    sentences = re.split(sentence_pattern, text)
+
+    seen_sentences = set()
+    result = []
+    duplicates_removed = 0
+
+    for sentence in sentences:
+        # Normalize for comparison (lowercase, strip punctuation/whitespace)
+        normalized = sentence.lower().strip()
+        normalized = re.sub(r'[^\w\s]', '', normalized)  # Remove punctuation
+        normalized = ' '.join(normalized.split())  # Normalize whitespace
+
+        if not normalized:
+            continue
+
+        if normalized not in seen_sentences:
+            seen_sentences.add(normalized)
+            result.append(sentence.strip())
+        else:
+            duplicates_removed += 1
+            logger.debug(f"Removing duplicate sentence: {sentence[:50]}...")
+
+    if duplicates_removed > 0:
+        logger.info(f"Removed {duplicates_removed} duplicate sentences")
+
+    return ' '.join(result)
+
+
+def remove_partial_phrase_repeats(text: str, min_words: int = 4, max_words: int = 15) -> str:
+    """
+    Remove partial phrase repetitions that occur close together.
+
+    Catches patterns like:
+    "I'm testing whether this works... I'm testing whether this"
+    Where the second phrase is a partial repeat of the first.
+
+    Args:
+        text: Input transcription text
+        min_words: Minimum phrase length to check
+        max_words: Maximum phrase length to check
+
+    Returns:
+        Text with partial repeats removed
+    """
+    if not text or not text.strip():
+        return text
+
+    words = text.split()
+    if len(words) < min_words * 2:
+        return text
+
+    result = []
+    i = 0
+    removed_count = 0
+
+    while i < len(words):
+        # Check if current position starts a phrase that was seen recently
+        found_repeat = False
+
+        for phrase_len in range(max_words, min_words - 1, -1):
+            if i + phrase_len > len(words):
+                continue
+
+            current_phrase = ' '.join(words[i:i + phrase_len]).lower()
+
+            # Look back in result to see if this phrase (or similar) already exists
+            result_text = ' '.join(result).lower()
+
+            # Check if the current phrase appears in the last portion of result
+            # (within last 50 words to avoid false positives)
+            lookback_start = max(0, len(result) - 50)
+            lookback_text = ' '.join(result[lookback_start:]).lower()
+
+            if current_phrase in lookback_text:
+                # Found a repeat - skip this phrase
+                logger.debug(f"Removing partial repeat: '{current_phrase[:40]}...'")
+                i += phrase_len
+                removed_count += 1
+                found_repeat = True
+                break
+
+        if not found_repeat:
+            result.append(words[i])
+            i += 1
+
+    if removed_count > 0:
+        logger.info(f"Removed {removed_count} partial phrase repeats")
+
+    return ' '.join(result)
+
+
 def remove_consecutive_duplicate_segments(segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Remove consecutive duplicate segments from transcription output.
@@ -103,6 +214,52 @@ def remove_consecutive_duplicate_segments(segments: List[Dict[str, Any]]) -> Lis
     return cleaned
 
 
+def remove_trailing_repetition(text: str, min_phrase_words: int = 3, max_phrase_words: int = 10) -> str:
+    """
+    Remove repeated phrases at the end of transcription.
+
+    Whisper often hallucinates by repeating a phrase at the end of audio,
+    especially when there's trailing silence. This function detects and removes
+    such trailing repetitions.
+
+    Args:
+        text: Input transcription text
+        min_phrase_words: Minimum phrase length to check (default 3 words)
+        max_phrase_words: Maximum phrase length to check (default 10 words)
+
+    Returns:
+        Text with trailing repetitions removed
+    """
+    if not text or not text.strip():
+        return text
+
+    words = text.split()
+    if len(words) < min_phrase_words * 2:
+        return text
+
+    # Check for trailing repetitions of various lengths
+    for phrase_len in range(min_phrase_words, min(max_phrase_words + 1, len(words) // 2 + 1)):
+        # Get the last N words (potential repeated phrase)
+        trailing_phrase = ' '.join(words[-phrase_len:]).lower().strip('.,!?')
+
+        # Look for this phrase earlier in the text
+        text_without_trailing = ' '.join(words[:-phrase_len])
+
+        # Check if the trailing phrase appears near the end of the remaining text
+        # (within the last 30% of the text)
+        remaining_words = words[:-phrase_len]
+        search_start = max(0, len(remaining_words) - int(len(remaining_words) * 0.3) - phrase_len)
+        search_region = ' '.join(remaining_words[search_start:]).lower()
+
+        if trailing_phrase in search_region:
+            # Found a repetition - remove the trailing phrase
+            cleaned = ' '.join(words[:-phrase_len])
+            logger.info(f"Removed trailing repetition: '{' '.join(words[-phrase_len:])}'")
+            return cleaned
+
+    return text
+
+
 def deduplicate_transcription(result: Dict[str, Any]) -> Dict[str, Any]:
     """
     Apply all deduplication strategies to transcription result.
@@ -122,10 +279,22 @@ def deduplicate_transcription(result: Dict[str, Any]) -> Dict[str, Any]:
     if segments:
         result['segments'] = remove_consecutive_duplicate_segments(segments)
 
-    # 2. N-gram text deduplication (8 words, max 1 repetition)
+    # 2. Sentence-level deduplication (catches repeated full sentences)
     original_text = result.get('text', '')
     if original_text:
-        result['text'] = remove_repeated_ngrams(original_text)
+        result['text'] = remove_duplicate_sentences(original_text)
+
+    # 3. Partial phrase repeat removal (catches "phrase... phrase" patterns)
+    if result.get('text'):
+        result['text'] = remove_partial_phrase_repeats(result['text'])
+
+    # 4. N-gram text deduplication (5 words, max 1 repetition - catches remaining phrase repeats)
+    if result.get('text'):
+        result['text'] = remove_repeated_ngrams(result['text'])
+
+    # 5. Trailing repetition removal (catches short phrases repeated at end)
+    if result.get('text'):
+        result['text'] = remove_trailing_repetition(result['text'])
 
     return result
 
@@ -232,16 +401,20 @@ class WhisperProcessor:
             "temperature": kwargs.get("temperature", 0.0),
 
             # Anti-hallucination / duplicate prevention parameters
-            "entropy_threshold": kwargs.get("entropy_threshold", 2.8),       # Reject high-entropy output (increased from 2.4)
-            "logprob_threshold": kwargs.get("logprob_threshold", -1.0),      # Reject low-confidence output
-            "no_speech_threshold": kwargs.get("no_speech_threshold", 0.6),   # Better silence detection
+            "entropy_threshold": kwargs.get("entropy_threshold", 2.2),       # Reject high-entropy output (lower = stricter)
+            "logprob_threshold": kwargs.get("logprob_threshold", -0.5),      # Reject low-confidence output (higher = stricter)
+            "no_speech_threshold": kwargs.get("no_speech_threshold", 0.5),   # Better silence detection
             "suppress_blank": "true",                                         # Suppress blank outputs
             "suppress_non_speech_tokens": "true",                             # Filter non-speech tokens
 
             # Key parameters to prevent repetition loops
-            "max_context": kwargs.get("max_context", 64),                     # Limit context window - prevents loops
+            "max_context": kwargs.get("max_context", 0),                      # Disable context carry-over (prevents loops)
             "beam_size": kwargs.get("beam_size", 5),                          # Better decoding accuracy
             "condition_on_previous_text": "false",                            # Don't let previous text influence current
+
+            # Additional repetition prevention
+            "word_timestamps": "true",                                        # Enable word-level timestamps for better segmentation
+            "split_on_word": "true",                                          # Split on word boundaries
         }
 
         if language:
@@ -548,11 +721,27 @@ class WhisperProcessor:
             )
             
             final_path = conv_result.get("output_path") if conv_result.get("conversion_success") else tmp_path
-            
-            # 4. Transcribe via existing method (calls C++ server)
+
+            # 4. VAD check - skip silent snippets to prevent hallucinations
+            from .config import is_vad_enabled
+            if is_vad_enabled():
+                try:
+                    from .audio_enhancer import should_skip_chunk
+                    if should_skip_chunk(final_path):
+                        logger.info("[PTT] Skipping silent snippet (VAD detected no speech)")
+                        return {
+                            "text": "",
+                            "confidence": 0.0,
+                            "duration_ms": 0,
+                            "skipped_reason": "no_speech"
+                        }
+                except Exception as e:
+                    logger.warning(f"[PTT] VAD check failed, proceeding with transcription: {e}")
+
+            # 5. Transcribe via existing method (calls C++ server)
             result = self.transcribe(final_path)
-            
-            # 5. Build response matching expected DictationResponse
+
+            # 6. Build response matching expected DictationResponse
             return {
                 "text": result.get("text", "").strip(),
                 "confidence": 1.0, # C++ server doesn't always provide per-snippet confidence

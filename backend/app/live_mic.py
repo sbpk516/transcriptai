@@ -78,6 +78,8 @@ class LiveSessionManager:
         if not sess:
             raise KeyError("session_not_found")
         final_text = " ".join([p for p in sess.partials if p]).strip()
+        # Clean up session to prevent data accumulation across recordings
+        del self.sessions[session_id]
         return {"session_id": session_id, "final_text": final_text}
 
 
