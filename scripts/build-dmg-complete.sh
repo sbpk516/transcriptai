@@ -12,9 +12,13 @@
 # - Provides clear progress indicators
 #
 # Usage:
-#   bash scripts/build-dmg-complete.sh          # Normal build
-#   bash scripts/build-dmg-complete.sh --clean  # Clean build (removes old builds)
-#   bash scripts/build-dmg-complete.sh --force   # Force rebuild everything
+#   bash scripts/build-dmg-complete.sh              # Build with patch version bump
+#   bash scripts/build-dmg-complete.sh --clean       # Clean build with patch bump
+#   bash scripts/build-dmg-complete.sh --force       # Force rebuild with patch bump
+#   bash scripts/build-dmg-complete.sh --no-bump     # Build without version bump
+#   bash scripts/build-dmg-complete.sh --minor       # Bump minor version (0.1.x → 0.2.0)
+#   bash scripts/build-dmg-complete.sh --major       # Bump major version (0.x.y → 1.0.0)
+#   Flags can be combined: --clean --minor
 # ============================================================================
 
 set -euo pipefail
@@ -31,12 +35,18 @@ BOLD='\033[1m'
 # Parse arguments
 CLEAN_BUILD=false
 FORCE_REBUILD=false
-if [[ "${1:-}" == "--clean" ]] || [[ "${1:-}" == "-c" ]]; then
-    CLEAN_BUILD=true
-elif [[ "${1:-}" == "--force" ]] || [[ "${1:-}" == "-f" ]]; then
-    FORCE_REBUILD=true
-    CLEAN_BUILD=true
-fi
+BUMP_VERSION=true
+BUMP_TYPE="patch"
+
+for arg in "$@"; do
+    case "$arg" in
+        --clean|-c)   CLEAN_BUILD=true ;;
+        --force|-f)   FORCE_REBUILD=true; CLEAN_BUILD=true ;;
+        --no-bump)    BUMP_VERSION=false ;;
+        --minor)      BUMP_TYPE="minor" ;;
+        --major)      BUMP_TYPE="major" ;;
+    esac
+done
 
 # Get root directory
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -79,6 +89,55 @@ if [[ "$CLEAN_BUILD" == "true" ]]; then
     rm -f "$DESKTOP_DIR/dist"/*.dmg 2>/dev/null || true
     
     log_success "Cleanup complete"
+fi
+
+# ============================================================================
+# STEP 0.5: Version Bump
+# ============================================================================
+if [[ "$BUMP_VERSION" == "true" ]]; then
+    log_step "STEP 0.5: Bumping Version ($BUMP_TYPE)"
+
+    CURRENT_VERSION=$(node -p "require('$DESKTOP_DIR/package.json').version")
+    log_info "Current version: $CURRENT_VERSION"
+
+    # Parse semver components
+    IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+    case "$BUMP_TYPE" in
+        major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+        minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+        patch) PATCH=$((PATCH + 1)) ;;
+    esac
+    NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+
+    # Update desktop/package.json using node to preserve formatting
+    node -e "
+      const fs = require('fs');
+      const path = '$DESKTOP_DIR/package.json';
+      const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+      pkg.version = '$NEW_VERSION';
+      fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
+    "
+    log_success "desktop/package.json → $NEW_VERSION"
+
+    # Update docs/releases/latest.json
+    LATEST_JSON="$ROOT_DIR/docs/releases/latest.json"
+    if [[ -f "$LATEST_JSON" ]]; then
+        node -e "
+          const fs = require('fs');
+          const path = '$LATEST_JSON';
+          const data = JSON.parse(fs.readFileSync(path, 'utf8'));
+          data.latestVersion = '$NEW_VERSION';
+          data.releasedAt = new Date().toISOString();
+          data.downloadUrl = data.downloadUrl.replace(/v[\d.]+\/TranscriptAI-[\d.]+/, 'v$NEW_VERSION/TranscriptAI-$NEW_VERSION');
+          fs.writeFileSync(path, JSON.stringify(data, null, 2) + '\n');
+        "
+        log_success "docs/releases/latest.json → $NEW_VERSION"
+    fi
+
+    log_info "Version bumped: $CURRENT_VERSION → $NEW_VERSION"
+else
+    CURRENT_VERSION=$(node -p "require('$DESKTOP_DIR/package.json').version")
+    log_info "Skipping version bump (--no-bump). Building version: $CURRENT_VERSION"
 fi
 
 # ============================================================================
@@ -407,6 +466,8 @@ if [[ -n "$DMG_FILE" ]] && [[ -f "$DMG_FILE" ]]; then
     echo -e "${GREEN}${BOLD}  ✅ DMG FILE CREATED SUCCESSFULLY!${NC}"
     echo -e "${GREEN}══════════════════════════════════════════════════════════${NC}"
     echo ""
+    FINAL_VERSION=$(node -p "require('$DESKTOP_DIR/package.json').version")
+    echo -e "  ${BOLD}Version:${NC} ${GREEN}$FINAL_VERSION${NC}"
     echo -e "  ${BOLD}Location:${NC} ${GREEN}$DMG_FILE${NC}"
     echo -e "  ${BOLD}Size:${NC} ${GREEN}$DMG_SIZE${NC} (${DMG_SIZE_MB} MB)"
     echo -e "  ${BOLD}Build Time:${NC} ${GREEN}${BUILD_MINUTES}m ${BUILD_SECONDS}s${NC}"

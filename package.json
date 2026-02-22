@@ -11,7 +11,10 @@
     "test:all": "python -m pytest -q",
     "build:dmg": "bash scripts/build-dmg-complete.sh",
     "build:dmg:clean": "bash scripts/build-dmg-complete.sh --clean",
-    "build:dmg:force": "bash scripts/build-dmg-complete.sh --force"
+    "build:dmg:force": "bash scripts/build-dmg-complete.sh --force",
+    "build:dmg:minor": "bash scripts/build-dmg-complete.sh --minor",
+    "build:dmg:major": "bash scripts/build-dmg-complete.sh --major",
+    "build:dmg:no-bump": "bash scripts/build-dmg-complete.sh --no-bump"
   },
   "devDependencies": {
     "husky": "^9.1.6",
