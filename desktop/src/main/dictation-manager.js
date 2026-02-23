@@ -7,6 +7,14 @@ const { createGlobalKeyListenerFactory } = require('./global-key-listener')
 
 const PERMISSION_TIMEOUT_MS = 5000
 const STUCK_KEY_TIMEOUT_MS = 90_000
+const MODIFIER_KEYUP_CONFIRM_MS = 150
+const MODIFIER_KEY_NAMES = new Set([
+  'LeftCmd', 'RightCmd', 'LeftMeta', 'RightMeta',
+  'LeftSuper', 'RightSuper', 'LeftWin', 'RightWin',
+  'LeftAlt', 'RightAlt',
+  'LeftControl', 'RightControl',
+  'LeftShift', 'RightShift',
+])
 
 function createLogger(bridge) {
   const emit = (level, message, meta) => {
@@ -72,6 +80,7 @@ class DictationManager extends EventEmitter {
     this._permissionRequestSeq = 0
     this._pendingPermission = null
     this._stuckKeyTimer = null
+    this._pendingKeyupTimers = new Map()
   }
 
   async typeText(payload = {}) {
@@ -244,6 +253,7 @@ class DictationManager extends EventEmitter {
     this._activeKeySet.clear()
     this._pressStartedAt = null
     this._clearPendingPermission({ reason: 'manager_stopped' })
+    this._clearAllPendingKeyupTimers()
     this._clearStuckKeyTimer()
     this._log.info('dictation manager listening stopped (scaffold)')
   }
@@ -419,6 +429,7 @@ class DictationManager extends EventEmitter {
     this._activeKeySet.clear()
     this._pressStartedAt = null
     this._clearPendingPermission({ reason: 'manager_disposed' })
+    this._clearAllPendingKeyupTimers()
     this._clearStuckKeyTimer()
     this.removeAllListeners()
     this._log.info('dictation manager disposed')
@@ -810,9 +821,102 @@ class DictationManager extends EventEmitter {
     return fallback !== undefined ? fallback : null
   }
 
+  _isModifierKeyCode(keyCode) {
+    if (process.platform !== 'darwin') {
+      return false
+    }
+    const Key = this._ensureKeyEnum()
+    if (!Key) {
+      return false
+    }
+    for (const name of MODIFIER_KEY_NAMES) {
+      if (Key[name] !== undefined && Key[name] === keyCode) {
+        return true
+      }
+    }
+    return false
+  }
+
+  _clearPendingKeyupTimer(keyCode) {
+    const timer = this._pendingKeyupTimers.get(keyCode)
+    if (timer !== undefined) {
+      clearTimeout(timer)
+      this._pendingKeyupTimers.delete(keyCode)
+    }
+  }
+
+  _clearAllPendingKeyupTimers() {
+    for (const timer of this._pendingKeyupTimers.values()) {
+      clearTimeout(timer)
+    }
+    this._pendingKeyupTimers.clear()
+  }
+
+  _processConfirmedKeyup(keyCode, rawEvent, timestamp) {
+    this._pendingKeyupTimers.delete(keyCode)
+
+    if (!this._targetKeySet.has(keyCode)) {
+      return
+    }
+
+    this._activeKeySet.delete(keyCode)
+
+    if (this._state === 'pressed') {
+      this._transitionState('armed', { keyCode, rawEvent })
+      this._log.debug('dictation shortcut primary key released – armed state', {
+        keyCode,
+        remainingKeys: Array.from(this._activeKeySet),
+      })
+    }
+
+    if (this._activeKeySet.size === 0 && this._pendingKeyupTimers.size === 0) {
+      if (this._state === 'armed') {
+        const duration = this._pressStartedAt ? timestamp - this._pressStartedAt : 0
+        this._transitionState('idle', { keyCode, rawEvent })
+        this._log.info('dictation shortcut released – ending press', {
+          timestamp,
+          durationMs: duration,
+        })
+        this._emitLifecycle('dictation:press-end', {
+          timestamp,
+          durationMs: duration,
+        })
+      } else if (this._state === 'pressed') {
+        const duration = this._pressStartedAt ? timestamp - this._pressStartedAt : 0
+        this._transitionState('idle', { keyCode, rawEvent, reason: 'direct_release' })
+        this._emitLifecycle('dictation:press-end', {
+          timestamp,
+          durationMs: duration,
+        })
+      } else if (this._state !== 'idle') {
+        this._cancelPress('unexpected_release', { keyCode })
+      }
+      this._pressStartedAt = null
+      this._activeKeySet.clear()
+      this._clearStuckKeyTimer()
+    }
+  }
+
   _handleKeydown(keyCode, rawEvent = {}) {
     const now = Date.now()
     if (this._shouldIgnoreEvent(now, rawEvent.state)) {
+      return
+    }
+
+    // If a keyup confirmation timer exists for this key, the prior UP was phantom
+    if (this._pendingKeyupTimers.has(keyCode)) {
+      this._clearPendingKeyupTimer(keyCode)
+      this._activeKeySet.add(keyCode)
+      this._log.info('phantom modifier keyup suppressed', {
+        keyCode,
+        state: this._state,
+        activeKeys: Array.from(this._activeKeySet),
+      })
+      // Recover from armed → pressed if shortcut is now satisfied again
+      if (this._state === 'armed' && this._isShortcutSatisfied()) {
+        this._transitionState('pressed', { keyCode, rawEvent, reason: 'phantom_recovery' })
+        this._armStuckKeyTimer()
+      }
       return
     }
 
@@ -862,6 +966,22 @@ class DictationManager extends EventEmitter {
       return
     }
 
+    // Defer modifier keyups during an active press to filter phantom macOS events
+    const isActivePress = this._state === 'pressed' || this._state === 'armed'
+    if (isActivePress && this._isModifierKeyCode(keyCode)) {
+      this._log.debug('deferring modifier keyup for confirmation', {
+        keyCode,
+        state: this._state,
+        confirmMs: MODIFIER_KEYUP_CONFIRM_MS,
+      })
+      this._clearPendingKeyupTimer(keyCode)
+      this._pendingKeyupTimers.set(keyCode, setTimeout(() => {
+        this._processConfirmedKeyup(keyCode, rawEvent, Date.now())
+      }, MODIFIER_KEYUP_CONFIRM_MS))
+      return
+    }
+
+    // Non-modifier keys: process immediately (original logic)
     this._activeKeySet.delete(keyCode)
 
     if (this._state === 'pressed') {
@@ -872,7 +992,7 @@ class DictationManager extends EventEmitter {
       })
     }
 
-    if (this._activeKeySet.size === 0) {
+    if (this._activeKeySet.size === 0 && this._pendingKeyupTimers.size === 0) {
       if (this._state === 'armed') {
         const duration = this._pressStartedAt ? now - this._pressStartedAt : 0
         this._transitionState('idle', { keyCode, rawEvent })
@@ -902,6 +1022,7 @@ class DictationManager extends EventEmitter {
   }
 
   _cancelPress(reason, meta = {}) {
+    this._clearAllPendingKeyupTimers()
     this._clearStuckKeyTimer()
     if (this._state === 'idle') {
       return
