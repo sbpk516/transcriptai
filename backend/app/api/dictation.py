@@ -74,19 +74,19 @@ async def transcribe_snippet(request: DictationSnippet) -> DictationResponse:
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    if _first_snippet_counter < _FIRST_SNIPPET_LOG_LIMIT:
-        _first_snippet_counter += 1
-        snippet_no = _first_snippet_counter
-        try:
-            logger.info(
-                "[DICTATION] sample=%d media=%s char_len=%d first_chars=%r",
-                snippet_no,
-                normalized_media_type or "audio/wav",
-                len(result.get("text", "")),
-                (result.get("text", "") or "")[:80],
-            )
-        except Exception:
-            pass
+    _first_snippet_counter += 1
+    snippet_no = _first_snippet_counter
+    text = result.get("text", "") or ""
+    word_count = len(text.split()) if text.strip() else 0
+    logger.info(
+        "[DICTATION] snippet=%d media=%s base64_len=%d result_words=%d result_chars=%d text=%r",
+        snippet_no,
+        normalized_media_type or "audio/wav",
+        len(request.audio_base64),
+        word_count,
+        len(text),
+        text[:200],
+    )
 
     return DictationResponse(**result)
 

@@ -271,6 +271,13 @@ contextBridge.exposeInMainWorld('transcriptaiDictation', {
       throw error
     }
   },
+  async heartbeat() {
+    try {
+      return await ipcRenderer.invoke('dictation:heartbeat')
+    } catch (_) {
+      return { ok: false }
+    }
+  },
   async cancelActivePress(payload = {}) {
     try {
       if (!payload || typeof payload !== 'object') {

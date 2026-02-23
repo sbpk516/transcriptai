@@ -7,6 +7,7 @@ const { createGlobalKeyListenerFactory } = require('./global-key-listener')
 
 const PERMISSION_TIMEOUT_MS = 5000
 const STUCK_KEY_TIMEOUT_MS = 90_000
+const ARMED_STATE_TIMEOUT_MS = 10_000
 const MODIFIER_KEYUP_CONFIRM_MS = 150
 const MODIFIER_KEY_NAMES = new Set([
   'LeftCmd', 'RightCmd', 'LeftMeta', 'RightMeta',
@@ -80,6 +81,7 @@ class DictationManager extends EventEmitter {
     this._permissionRequestSeq = 0
     this._pendingPermission = null
     this._stuckKeyTimer = null
+    this._armedStateTimer = null
     this._pendingKeyupTimers = new Map()
   }
 
@@ -255,6 +257,7 @@ class DictationManager extends EventEmitter {
     this._clearPendingPermission({ reason: 'manager_stopped' })
     this._clearAllPendingKeyupTimers()
     this._clearStuckKeyTimer()
+    this._clearArmedStateTimer()
     this._log.info('dictation manager listening stopped (scaffold)')
   }
 
@@ -431,6 +434,7 @@ class DictationManager extends EventEmitter {
     this._clearPendingPermission({ reason: 'manager_disposed' })
     this._clearAllPendingKeyupTimers()
     this._clearStuckKeyTimer()
+    this._clearArmedStateTimer()
     this.removeAllListeners()
     this._log.info('dictation manager disposed')
   }
@@ -1024,6 +1028,7 @@ class DictationManager extends EventEmitter {
   _cancelPress(reason, meta = {}) {
     this._clearAllPendingKeyupTimers()
     this._clearStuckKeyTimer()
+    this._clearArmedStateTimer()
     if (this._state === 'idle') {
       return
     }
@@ -1072,6 +1077,12 @@ class DictationManager extends EventEmitter {
     this._state = next
     this._lastEventTs = Date.now()
     this._log.debug('state transition', { previous, next, ...meta })
+
+    if (next === 'armed') {
+      this._armArmedStateTimer()
+    } else if (previous === 'armed') {
+      this._clearArmedStateTimer()
+    }
   }
 
   _shouldIgnoreEvent(now = Date.now(), state = null) {
@@ -1100,6 +1111,37 @@ class DictationManager extends EventEmitter {
     if (this._stuckKeyTimer) {
       clearTimeout(this._stuckKeyTimer)
       this._stuckKeyTimer = null
+    }
+  }
+
+  _armArmedStateTimer() {
+    this._clearArmedStateTimer()
+    if (!ARMED_STATE_TIMEOUT_MS || ARMED_STATE_TIMEOUT_MS <= 0) {
+      return
+    }
+    this._armedStateTimer = setTimeout(() => {
+      this._armedStateTimer = null
+      if (this._state !== 'armed') {
+        return
+      }
+      this._log.warn('armed state timeout - recovering from lost keyup', {
+        activeKeys: Array.from(this._activeKeySet),
+      })
+      this._cancelPress('armed_state_timeout', { activeKeys: Array.from(this._activeKeySet) })
+    }, ARMED_STATE_TIMEOUT_MS)
+  }
+
+  _clearArmedStateTimer() {
+    if (this._armedStateTimer) {
+      clearTimeout(this._armedStateTimer)
+      this._armedStateTimer = null
+    }
+  }
+
+  notifyDictationActive() {
+    if (this._state === 'pressed' && this._stuckKeyTimer) {
+      this._armStuckKeyTimer()
+      this._log.debug('stuck-key timer re-armed due to active dictation')
     }
   }
 
