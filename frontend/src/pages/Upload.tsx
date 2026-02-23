@@ -146,9 +146,8 @@ const Capture: React.FC = () => {
       let nextStatus: 'ready' | 'loading' | 'not_loaded' | 'unknown' = 'unknown'
       if (whisperStatus === 'ready') {
         nextStatus = 'ready'
-      } else if (whisperStatus === 'loading') {
-        nextStatus = 'loading'
-      } else if (whisperStatus === 'not_loaded' || whisperStatus === 'offline') {
+      } else if (whisperStatus) {
+        // Any non-ready status (error, offline, not_loaded, loading) = unavailable
         nextStatus = 'not_loaded'
       }
       const parseElapsed = performance.now() - parseStartTime
