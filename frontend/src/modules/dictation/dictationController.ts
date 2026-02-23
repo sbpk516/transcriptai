@@ -117,6 +117,7 @@ export function useDictationController(): DictationControllerState {
   const recordingStartInFlightRef = useRef(false)
   const notificationTimersRef = useRef<Map<string, number>>(new Map())
   const lastInsertedTranscriptRef = useRef<string | null>(null)
+  const heartbeatTimerRef = useRef<number | null>(null)
   const [notifications, setNotifications] = useState<DictationNotification[]>([])
   const [safeMode, setSafeMode] = useState<SafeModeState>({
     engaged: false,
@@ -488,6 +489,10 @@ export function useDictationController(): DictationControllerState {
       }
 
       clearWatchdogTimer()
+      if (heartbeatTimerRef.current) {
+        window.clearInterval(heartbeatTimerRef.current)
+        heartbeatTimerRef.current = null
+      }
       stopStreamTracks()
       mediaRecorderRef.current = null
       mediaStreamRef.current = null
@@ -587,6 +592,13 @@ export function useDictationController(): DictationControllerState {
               })
             }
             log('debug', 'dictation transcript received', { transcript })
+            log('info', '[WORD-DEBUG] transcript word analysis', {
+              wordCount: transcript.trim().split(/\s+/).filter(Boolean).length,
+              charCount: transcript.length,
+              trimmedLength: transcript.trim().length,
+              firstWords: transcript.trim().split(/\s+/).slice(0, 5).join(' '),
+              lastWords: transcript.trim().split(/\s+/).slice(-5).join(' '),
+            })
             const expectedTarget = releaseTargetRef.current ?? null
             
             // Reset status to idle first - upload succeeded regardless of insertion outcome
@@ -614,10 +626,12 @@ export function useDictationController(): DictationControllerState {
             // Guard against duplicate processing of the same transcript
             // Note: Status is already reset above, so we can safely return early here
             if (lastInsertedTranscriptRef.current === transcript) {
-              log('warn', 'dictation transcript already processed, skipping duplicate insertion', { 
+              log('warn', 'dictation transcript already processed, skipping duplicate insertion', {
                 transcript,
                 transcriptLength: transcript.length,
               })
+              log('debug', 'explicitly hiding indicator on duplicate early return')
+              updateDesktopIndicator(false, 'recording', null)
               return
             }
             
@@ -630,6 +644,8 @@ export function useDictationController(): DictationControllerState {
                 title: 'No speech detected',
                 message: 'Try speaking louder or closer to the microphone',
               })
+              log('debug', 'explicitly hiding indicator on empty transcript early return')
+              updateDesktopIndicator(false, 'recording', null)
               return
             }
             
@@ -808,6 +824,12 @@ export function useDictationController(): DictationControllerState {
 
           try {
             recorder.start()
+            if (heartbeatTimerRef.current) { window.clearInterval(heartbeatTimerRef.current) }
+            heartbeatTimerRef.current = window.setInterval(() => {
+              if (window.transcriptaiDictation && typeof window.transcriptaiDictation.heartbeat === 'function') {
+                void window.transcriptaiDictation.heartbeat()
+              }
+            }, 30_000)
             clearWatchdogTimer()
             watchdogTimerRef.current = window.setTimeout(() => {
               log('warn', 'recording watchdog triggered', { timeoutMs: MAX_RECORDING_DURATION_MS })
@@ -1105,11 +1127,12 @@ export function useDictationController(): DictationControllerState {
       requestIndicatorPosition(mode)
       updateDesktopIndicator(true, state.status === 'processing' ? 'processing' : 'recording', state.indicatorPosition)
     } else {
+      log('debug', 'indicator useEffect hiding indicator', { status: state.status })
       lastIndicatorFetchRef.current = 0
       setState(prev => (prev.indicatorPosition === null ? prev : { ...prev, indicatorPosition: null }))
       updateDesktopIndicator(false, 'recording', null)
     }
-  }, [state.status, state.indicatorPosition, requestIndicatorPosition, updateDesktopIndicator])
+  }, [state.status, state.indicatorPosition, requestIndicatorPosition, updateDesktopIndicator, log])
 
   useEffect(() => {
     if (window.transcriptaiDictation) {

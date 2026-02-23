@@ -274,29 +274,78 @@ def deduplicate_transcription(result: Dict[str, Any]) -> Dict[str, Any]:
     if not result or result.get('error'):
         return result
 
+    original_text = result.get('text', '')
+    original_word_count = len(original_text.split()) if original_text else 0
+    logger.info(
+        "[DEDUP] input: words=%d chars=%d text=%r",
+        original_word_count, len(original_text), original_text[:200]
+    )
+
     # 1. Segment deduplication (safe - always ON)
     segments = result.get('segments', [])
     if segments:
         result['segments'] = remove_consecutive_duplicate_segments(segments)
 
     # 2. Sentence-level deduplication (catches repeated full sentences)
-    original_text = result.get('text', '')
     if original_text:
         result['text'] = remove_duplicate_sentences(original_text)
+        _dedup_log_pass("sentence_dedup", original_text, result['text'])
 
     # 3. Partial phrase repeat removal (catches "phrase... phrase" patterns)
     if result.get('text'):
+        before = result['text']
         result['text'] = remove_partial_phrase_repeats(result['text'])
+        _dedup_log_pass("partial_phrase", before, result['text'])
 
     # 4. N-gram text deduplication (5 words, max 1 repetition - catches remaining phrase repeats)
     if result.get('text'):
+        before = result['text']
         result['text'] = remove_repeated_ngrams(result['text'])
+        _dedup_log_pass("ngram_dedup", before, result['text'])
 
     # 5. Trailing repetition removal (catches short phrases repeated at end)
     if result.get('text'):
+        before = result['text']
         result['text'] = remove_trailing_repetition(result['text'])
+        _dedup_log_pass("trailing_rep", before, result['text'])
+
+    final_text = result.get('text', '')
+    final_word_count = len(final_text.split()) if final_text else 0
+    words_removed = original_word_count - final_word_count
+    logger.info(
+        "[DEDUP] output: words=%d chars=%d removed=%d text=%r",
+        final_word_count, len(final_text), words_removed, final_text[:200]
+    )
+    if words_removed > 0:
+        logger.warning(
+            "[DEDUP] %d words removed by deduplication pipeline (%.0f%% of original)",
+            words_removed, (words_removed / max(original_word_count, 1)) * 100
+        )
 
     return result
+
+
+def _dedup_log_pass(pass_name: str, before: str, after: str) -> None:
+    """Log a single deduplication pass if it changed the text."""
+    if before != after:
+        before_words = len(before.split()) if before else 0
+        after_words = len(after.split()) if after else 0
+        logger.warning(
+            "[DEDUP][%s] changed: words %d→%d (-%d) chars %d→%d | removed=%r",
+            pass_name, before_words, after_words, before_words - after_words,
+            len(before), len(after),
+            _diff_snippet(before, after),
+        )
+    else:
+        logger.debug("[DEDUP][%s] no change", pass_name)
+
+
+def _diff_snippet(before: str, after: str, max_len: int = 120) -> str:
+    """Return a snippet showing what was removed."""
+    if after in before:
+        removed = before.replace(after, '', 1).strip()
+        return removed[:max_len] if removed else "(whitespace only)"
+    return f"before={before[:max_len//2]}... after={after[:max_len//2]}..."
 
 
 class WhisperProcessor:
@@ -443,7 +492,12 @@ class WhisperProcessor:
             result = response.json()
             
             duration = time.time() - start_time
-            logger.info(f"Transcription complete in {duration:.2f}s")
+            raw_text = result.get("text", "")
+            raw_word_count = len(raw_text.split()) if raw_text else 0
+            logger.info(
+                "[WHISPER-RAW] complete in %.2fs: words=%d chars=%d text=%r",
+                duration, raw_word_count, len(raw_text), raw_text[:300]
+            )
             logger.debug(f"Transcription result: {result}")
             
             # Normalize response to match expected output structure
@@ -690,7 +744,7 @@ class WhisperProcessor:
         import uuid
         from .audio_processor import audio_processor
 
-        logger.info(f"[PTT] Processing base64 snippet: type={media_type}, rate={sample_rate}")
+        logger.info(f"[PTT] Processing base64 snippet: type={media_type}, rate={sample_rate}, base64_len={len(audio_base64)}")
 
         # 1. Decode base64
         try:
@@ -741,9 +795,18 @@ class WhisperProcessor:
             # 5. Transcribe via existing method (calls C++ server)
             result = self.transcribe(final_path)
 
+            final_text = result.get("text", "").strip()
+            final_word_count = len(final_text.split()) if final_text else 0
+            logger.info(
+                "[PTT] transcription result: words=%d chars=%d error=%s text=%r",
+                final_word_count, len(final_text),
+                result.get("error", "none"),
+                final_text[:200],
+            )
+
             # 6. Build response matching expected DictationResponse
             return {
-                "text": result.get("text", "").strip(),
+                "text": final_text,
                 "confidence": 1.0, # C++ server doesn't always provide per-snippet confidence
                 "duration_ms": int(max_duration_ms), # Rough estimate or extracted from file if needed
             }

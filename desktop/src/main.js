@@ -1023,6 +1023,7 @@ app.on('ready', async () => {
   })
   manager.on('dictation:permission-granted', payload => {
     logLine('dictation_permission_granted', payload)
+    manager.notifyDictationActive()
     broadcastDictationLifecycle('dictation:permission-granted', payload)
   })
   manager.on('dictation:permission-denied', payload => {
@@ -1167,6 +1168,16 @@ ipcMain.handle('dictation:cancel-active-press', async (_event, payload = {}) => 
     return { ok: true }
   } catch (error) {
     logLine('dictation_cancel_error', error.message)
+    return { ok: false, message: error.message }
+  }
+})
+
+ipcMain.handle('dictation:heartbeat', async () => {
+  try {
+    const manager = getDictationManager()
+    manager.notifyDictationActive()
+    return { ok: true }
+  } catch (error) {
     return { ok: false, message: error.message }
   }
 })
