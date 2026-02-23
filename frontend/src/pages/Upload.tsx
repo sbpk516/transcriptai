@@ -141,14 +141,14 @@ const Capture: React.FC = () => {
       const models = response.data?.models ?? {}
       const whisperStatus = models.whisper?.status as string | undefined
       const nlpStatus = models.nlp?.status as string | undefined
-      const statuses = [whisperStatus, nlpStatus].filter(Boolean) as string[]
 
+      // Only whisper status gates transcription readiness — NLP is optional
       let nextStatus: 'ready' | 'loading' | 'not_loaded' | 'unknown' = 'unknown'
-      if (statuses.length && statuses.every(status => status === 'ready')) {
+      if (whisperStatus === 'ready') {
         nextStatus = 'ready'
-      } else if (statuses.some(status => status === 'loading')) {
+      } else if (whisperStatus === 'loading') {
         nextStatus = 'loading'
-      } else if (statuses.some(status => status === 'not_loaded')) {
+      } else if (whisperStatus === 'not_loaded' || whisperStatus === 'offline') {
         nextStatus = 'not_loaded'
       }
       const parseElapsed = performance.now() - parseStartTime
