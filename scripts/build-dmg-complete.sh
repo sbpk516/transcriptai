@@ -64,19 +64,10 @@ if [[ -f "$ROOT_DIR/.env" ]]; then
     set +a
 fi
 
-# Load Apple notarization credentials from macOS Keychain (if not already set)
-if [[ -z "${APPLE_ID:-}" ]]; then
-    APPLE_ID=$(security find-generic-password -a sbpk516 -s apple-notarize-id -w 2>/dev/null || true)
-    export APPLE_ID
-fi
-if [[ -z "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then
-    APPLE_APP_SPECIFIC_PASSWORD=$(security find-generic-password -a sbpk516 -s apple-notarize-password -w 2>/dev/null || true)
-    export APPLE_APP_SPECIFIC_PASSWORD
-fi
-if [[ -z "${APPLE_TEAM_ID:-}" ]]; then
-    APPLE_TEAM_ID=$(security find-generic-password -a sbpk516 -s apple-notarize-team-id -w 2>/dev/null || true)
-    export APPLE_TEAM_ID
-fi
+# Apple notarization credentials are managed via:
+#   - GitHub Actions: repository secrets (APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID)
+#   - Local builds: .env file or environment variables
+# Notarization will be skipped if credentials are not available.
 
 # Helper functions
 log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
