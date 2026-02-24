@@ -64,6 +64,20 @@ if [[ -f "$ROOT_DIR/.env" ]]; then
     set +a
 fi
 
+# Load Apple notarization credentials from macOS Keychain (if not already set)
+if [[ -z "${APPLE_ID:-}" ]]; then
+    APPLE_ID=$(security find-generic-password -a sbpk516 -s apple-notarize-id -w 2>/dev/null || true)
+    export APPLE_ID
+fi
+if [[ -z "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then
+    APPLE_APP_SPECIFIC_PASSWORD=$(security find-generic-password -a sbpk516 -s apple-notarize-password -w 2>/dev/null || true)
+    export APPLE_APP_SPECIFIC_PASSWORD
+fi
+if [[ -z "${APPLE_TEAM_ID:-}" ]]; then
+    APPLE_TEAM_ID=$(security find-generic-password -a sbpk516 -s apple-notarize-team-id -w 2>/dev/null || true)
+    export APPLE_TEAM_ID
+fi
+
 # Helper functions
 log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 log_success() { echo -e "${GREEN}[✓]${NC} $1"; }
@@ -387,6 +401,11 @@ fi
 log_step "STEP 10: Creating DMG File"
 
 cd "$DESKTOP_DIR"
+
+# Remove old DMG files to avoid stale artifacts being picked up
+log_info "Cleaning old DMG files..."
+rm -f "$DESKTOP_DIR/dist"/TranscriptAI-*.dmg "$DESKTOP_DIR/dist"/transcriptai-*.dmg "$DESKTOP_DIR/dist"/*.blockmap 2>/dev/null || true
+
 log_info "Building DMG with electron-builder..."
 log_info "This may take 5-10 minutes..."
 
