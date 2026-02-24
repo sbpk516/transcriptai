@@ -18,7 +18,8 @@
 #   bash scripts/build-dmg-complete.sh --no-bump     # Build without version bump
 #   bash scripts/build-dmg-complete.sh --minor       # Bump minor version (0.1.x → 0.2.0)
 #   bash scripts/build-dmg-complete.sh --major       # Bump major version (0.x.y → 1.0.0)
-#   Flags can be combined: --clean --minor
+#   bash scripts/build-dmg-complete.sh --publish     # Auto-publish to GitHub Releases
+#   Flags can be combined: --clean --minor --publish
 # ============================================================================
 
 set -euo pipefail
@@ -37,6 +38,7 @@ CLEAN_BUILD=false
 FORCE_REBUILD=false
 BUMP_VERSION=true
 BUMP_TYPE="patch"
+PUBLISH_RELEASE=false
 
 for arg in "$@"; do
     case "$arg" in
@@ -45,6 +47,7 @@ for arg in "$@"; do
         --no-bump)    BUMP_VERSION=false ;;
         --minor)      BUMP_TYPE="minor" ;;
         --major)      BUMP_TYPE="major" ;;
+        --publish)    PUBLISH_RELEASE=true ;;
     esac
 done
 
@@ -480,6 +483,76 @@ if [[ -n "$DMG_FILE" ]] && [[ -f "$DMG_FILE" ]]; then
     echo -e "${CYAN}To test the DMG:${NC}"
     echo "  open \"$DMG_FILE\""
     echo ""
+
+    # ============================================================================
+    # STEP 13: GitHub Release (if --publish)
+    # ============================================================================
+    if [[ "$PUBLISH_RELEASE" == "true" ]]; then
+        log_step "STEP 13: Publishing GitHub Release"
+
+        # Retrieve sbpk516 PAT from macOS Keychain
+        RELEASE_TOKEN=$(security find-generic-password -a sbpk516 -s gh-token-sbpk516 -w 2>/dev/null || true)
+        if [[ -z "$RELEASE_TOKEN" ]]; then
+            log_error "sbpk516 GitHub token not found in macOS Keychain"
+            log_error "Store it with: security add-generic-password -a sbpk516 -s gh-token-sbpk516 -w \"ghp_YOUR_TOKEN\" -U"
+            exit 1
+        fi
+        log_success "Retrieved sbpk516 token from Keychain"
+
+        cd "$ROOT_DIR"
+
+        # Commit version bump changes
+        log_info "Committing version bump..."
+        git add desktop/package.json docs/releases/latest.json
+        git commit -m "chore: bump version to $FINAL_VERSION" || log_info "No version changes to commit"
+
+        # Create and push tag
+        TAG_NAME="v$FINAL_VERSION"
+        log_info "Creating tag $TAG_NAME..."
+        git tag -f "$TAG_NAME"
+        git push origin main --no-verify
+        git push origin "$TAG_NAME" --force --no-verify
+        log_success "Tag $TAG_NAME pushed"
+
+        # Create GitHub release with DMG
+        log_info "Creating GitHub release..."
+        RELEASE_NOTES="## TranscriptAI $TAG_NAME
+
+### Changes
+- Built from $(git log -1 --pretty=format:'%h %s')
+
+### Install
+1. Download the DMG file below
+2. Open the DMG and drag TranscriptAI to Applications
+3. Launch TranscriptAI from Applications"
+
+        GH_TOKEN="$RELEASE_TOKEN" gh release create "$TAG_NAME" \
+            "$DMG_FILE" \
+            --repo sbpk516/transcriptai \
+            --title "TranscriptAI $TAG_NAME" \
+            --notes "$RELEASE_NOTES" \
+            --latest
+
+        log_success "GitHub release $TAG_NAME published with DMG!"
+
+        # Upload latest.json as a release asset (for update checker)
+        LATEST_JSON="$ROOT_DIR/docs/releases/latest.json"
+        if [[ -f "$LATEST_JSON" ]]; then
+            log_info "Uploading latest.json for update checker..."
+            GH_TOKEN="$RELEASE_TOKEN" gh release upload "$TAG_NAME" \
+                "$LATEST_JSON" \
+                --repo sbpk516/transcriptai \
+                --clobber
+            log_success "latest.json uploaded"
+        fi
+
+        echo ""
+        echo -e "${GREEN}══════════════════════════════════════════════════════════${NC}"
+        echo -e "${GREEN}${BOLD}  🚀 RELEASE PUBLISHED SUCCESSFULLY!${NC}"
+        echo -e "${GREEN}══════════════════════════════════════════════════════════${NC}"
+        echo -e "  ${BOLD}Release:${NC} https://github.com/sbpk516/transcriptai/releases/tag/$TAG_NAME"
+        echo ""
+    fi
 
     exit 0
 else

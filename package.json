@@ -14,7 +14,10 @@
     "build:dmg:force": "bash scripts/build-dmg-complete.sh --force",
     "build:dmg:minor": "bash scripts/build-dmg-complete.sh --minor",
     "build:dmg:major": "bash scripts/build-dmg-complete.sh --major",
-    "build:dmg:no-bump": "bash scripts/build-dmg-complete.sh --no-bump"
+    "build:dmg:no-bump": "bash scripts/build-dmg-complete.sh --no-bump",
+    "release": "bash scripts/build-dmg-complete.sh --minor --publish",
+    "release:patch": "bash scripts/build-dmg-complete.sh --publish",
+    "release:major": "bash scripts/build-dmg-complete.sh --major --publish"
   },
   "devDependencies": {
     "husky": "^9.1.6",
