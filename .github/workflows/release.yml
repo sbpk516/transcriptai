@@ -111,6 +111,16 @@ jobs:
           # Verify certificate
           security find-identity -v -p codesigning $KEYCHAIN_PATH
 
+      - name: Download Whisper model
+        run: |
+          mkdir -p backend-cpp/models
+          if [ ! -f "backend-cpp/models/ggml-base.en.bin" ]; then
+            echo "Downloading ggml-base.en.bin..."
+            curl -L -o backend-cpp/models/ggml-base.en.bin \
+              "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"
+            echo "Model downloaded ($(du -h backend-cpp/models/ggml-base.en.bin | cut -f1))"
+          fi
+
       - name: Build backend
         working-directory: backend
         run: bash build-backend.sh
