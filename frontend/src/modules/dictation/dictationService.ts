@@ -44,7 +44,7 @@ export interface DictationSnippetUploadOptions {
   externalAbortSignal?: AbortSignal
 }
 
-const DEFAULT_TIMEOUT_MS = 120_000  // 120s to accommodate model loading or heavy processing
+const DEFAULT_TIMEOUT_MS = 600_000  // 10 min — accommodates whisper transcribing recordings up to 15 min
 const DEFAULT_MAX_ATTEMPTS = 3
 const BACKOFF_BASE_MS = 500
 

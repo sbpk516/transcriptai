@@ -226,14 +226,6 @@ contextBridge.exposeInMainWorld('transcriptaiDictation', {
       listenerCount: dictationLifecycleListeners.size + 1,
     })
     dictationLifecycleListeners.add(callback)
-    if (latestLifecycleEvent) {
-      try {
-        console.log('[Preload DEBUG] Calling new listener with cached event', latestLifecycleEvent?.event)
-        callback(latestLifecycleEvent)
-      } catch (error) {
-        console.error('[Preload] immediate lifecycle callback failed', error)
-      }
-    }
     return () => {
       console.log('[Preload DEBUG] onLifecycle: unregistering listener')
       dictationLifecycleListeners.delete(callback)

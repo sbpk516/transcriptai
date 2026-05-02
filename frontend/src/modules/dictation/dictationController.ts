@@ -60,7 +60,7 @@ const MEDIA_CONSTRAINTS: MediaStreamConstraints = {
 }
 
 const RECORDER_MIME_TYPES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
-const MAX_RECORDING_DURATION_MS = 120_000
+const MAX_RECORDING_DURATION_MS = 900_000
 
 interface DictationInternalState {
   status: DictationStatus
@@ -115,6 +115,7 @@ export function useDictationController(): DictationControllerState {
   const lastIndicatorFetchRef = useRef<number>(0)
   const waitingForPermissionRef = useRef(false)
   const recordingStartInFlightRef = useRef(false)
+  const pressEndHandledRef = useRef(false)
   const notificationTimersRef = useRef<Map<string, number>>(new Map())
   const lastInsertedTranscriptRef = useRef<string | null>(null)
   const heartbeatTimerRef = useRef<number | null>(null)
@@ -778,8 +779,11 @@ export function useDictationController(): DictationControllerState {
         log('debug', 'start recording already in flight', { origin })
         return
       }
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-        log('warn', 'start recording skipped – recorder already active', { origin })
+      if (mediaRecorderRef.current) {
+        log('warn', 'start recording skipped – recorder already exists', {
+          origin,
+          state: mediaRecorderRef.current.state,
+        })
         return
       }
 
@@ -787,85 +791,87 @@ export function useDictationController(): DictationControllerState {
 
       void startRecordingSession()
         .then(recorder => {
-          recordingStartInFlightRef.current = false
+          try {
+            if (!pendingPressRef.current) {
+              log('warn', 'recording start aborted – press cleared', { origin })
+              stopRecorder()
+              return
+            }
 
-          if (!pendingPressRef.current) {
-            log('warn', 'recording start aborted – press cleared', { origin })
-            stopRecorder()
-            return
-          }
+            if (!recorder) {
+              log('error', 'recorder unavailable on start attempt', { origin })
+              return
+            }
 
-          if (!recorder) {
-            log('error', 'recorder unavailable on start attempt', { origin })
-            return
-          }
+            bufferedChunksRef.current = []
+            recorder.ondataavailable = evt => {
+              if (evt.data && evt.data.size > 0) {
+                bufferedChunksRef.current.push(evt.data)
+                log('debug', 'recorder data chunk buffered', {
+                  chunkSize: evt.data.size,
+                  totalChunks: bufferedChunksRef.current.length,
+                })
+              }
+            }
 
-          bufferedChunksRef.current = []
-          recorder.ondataavailable = evt => {
-            if (evt.data && evt.data.size > 0) {
-              bufferedChunksRef.current.push(evt.data)
-              log('debug', 'recorder data chunk buffered', {
-                chunkSize: evt.data.size,
-                totalChunks: bufferedChunksRef.current.length,
+            recorder.onstop = () => {
+              log('debug', 'media recorder stopped (onstop event)', {
+                bufferedChunks: bufferedChunksRef.current.length,
               })
             }
-          }
-
-          recorder.onstop = () => {
-            log('debug', 'media recorder stopped (onstop event)', {
-              bufferedChunks: bufferedChunksRef.current.length,
-            })
-          }
-          recorder.onerror = eventError => {
-            log('error', 'recorder error', { error: eventError })
-            setState(prev => ({ ...prev, status: 'error', error: 'recorder error' }))
-            stopRecorder()
-          }
-
-          try {
-            recorder.start()
-            if (heartbeatTimerRef.current) { window.clearInterval(heartbeatTimerRef.current) }
-            heartbeatTimerRef.current = window.setInterval(() => {
-              if (window.transcriptaiDictation && typeof window.transcriptaiDictation.heartbeat === 'function') {
-                void window.transcriptaiDictation.heartbeat()
-              }
-            }, 30_000)
-            clearWatchdogTimer()
-            watchdogTimerRef.current = window.setTimeout(() => {
-              log('warn', 'recording watchdog triggered', { timeoutMs: MAX_RECORDING_DURATION_MS })
+            recorder.onerror = eventError => {
+              log('error', 'recorder error', { error: eventError })
+              setState(prev => ({ ...prev, status: 'error', error: 'recorder error' }))
               stopRecorder()
-              setState(prev => ({ ...prev, status: 'error', error: 'recording timed out' }))
-              pushNotification({
-                severity: 'error',
-                title: 'Dictation timed out',
-                message: 'Recording took too long. Release the shortcut sooner and try again.',
-              })
-              registerFatalError('recording_timeout', 'Recording timed out before completion.', { countsTowardSafeMode: false })
-              if (window.transcriptaiDictation && typeof window.transcriptaiDictation.cancelActivePress === 'function') {
-                void window.transcriptaiDictation
-                  .cancelActivePress({
-                    reason: 'renderer_timeout',
-                    details: { source: 'watchdog' },
-                  })
-                  .then(response => {
-                    const ok = Boolean(response && (response as { ok?: boolean }).ok)
-                    log(ok ? 'debug' : 'warn', 'watchdog cancel response', {
-                      ok,
-                      message: (response as { message?: string })?.message,
+            }
+
+            try {
+              recorder.start()
+              if (heartbeatTimerRef.current) { window.clearInterval(heartbeatTimerRef.current) }
+              heartbeatTimerRef.current = window.setInterval(() => {
+                if (window.transcriptaiDictation && typeof window.transcriptaiDictation.heartbeat === 'function') {
+                  void window.transcriptaiDictation.heartbeat()
+                }
+              }, 30_000)
+              clearWatchdogTimer()
+              watchdogTimerRef.current = window.setTimeout(() => {
+                log('warn', 'recording watchdog triggered', { timeoutMs: MAX_RECORDING_DURATION_MS })
+                stopRecorder()
+                setState(prev => ({ ...prev, status: 'error', error: 'recording timed out' }))
+                pushNotification({
+                  severity: 'error',
+                  title: 'Dictation timed out',
+                  message: 'Recording took too long. Release the shortcut sooner and try again.',
+                })
+                registerFatalError('recording_timeout', 'Recording timed out before completion.', { countsTowardSafeMode: false })
+                if (window.transcriptaiDictation && typeof window.transcriptaiDictation.cancelActivePress === 'function') {
+                  void window.transcriptaiDictation
+                    .cancelActivePress({
+                      reason: 'renderer_timeout',
+                      details: { source: 'watchdog' },
                     })
-                  })
-                  .catch(cancelError => {
-                    log('error', 'failed to notify cancel', { error: cancelError })
-                  })
-              }
-            }, MAX_RECORDING_DURATION_MS)
-            setState(prev => ({ ...prev, status: 'recording', error: null }))
-            log('debug', 'recording started', { origin })
-          } catch (error) {
-            log('error', 'failed to start recorder', { error })
-            setState(prev => ({ ...prev, status: 'error', error: 'failed to start recording' }))
-            stopStreamTracks()
-            resetRecordingState()
+                    .then(response => {
+                      const ok = Boolean(response && (response as { ok?: boolean }).ok)
+                      log(ok ? 'debug' : 'warn', 'watchdog cancel response', {
+                        ok,
+                        message: (response as { message?: string })?.message,
+                      })
+                    })
+                    .catch(cancelError => {
+                      log('error', 'failed to notify cancel', { error: cancelError })
+                    })
+                }
+              }, MAX_RECORDING_DURATION_MS)
+              setState(prev => ({ ...prev, status: 'recording', error: null }))
+              log('debug', 'recording started', { origin })
+            } catch (error) {
+              log('error', 'failed to start recorder', { error })
+              setState(prev => ({ ...prev, status: 'error', error: 'failed to start recording' }))
+              stopStreamTracks()
+              resetRecordingState()
+            }
+          } finally {
+            recordingStartInFlightRef.current = false
           }
         })
         .catch(error => {
@@ -965,6 +971,7 @@ export function useDictationController(): DictationControllerState {
         waitingForPermissionRef.current = true
         releaseTargetRef.current = null
         lastInsertedTranscriptRef.current = null // Clear previous transcript to allow new recording
+        pressEndHandledRef.current = false
         setState(prev => ({ ...prev, status: 'recording', error: null }))
         if (safeMode.engaged) {
           resetSafeModeState()
@@ -972,11 +979,16 @@ export function useDictationController(): DictationControllerState {
         attemptStartRecording('press-start')
         break
       case 'dictation:press-end':
-        // Guard against duplicate press-end events
+        // Guard against duplicate press-end events (synchronous — runs before any async work)
+        if (pressEndHandledRef.current) {
+          log('warn', 'press-end ignored – already handled for this press session')
+          break
+        }
         if (!mediaRecorderRef.current) {
           log('warn', 'press-end received without active recorder (already processed or not started)')
           break
         }
+        pressEndHandledRef.current = true
 
         releaseTargetRef.current = snapshotActiveEditable()
 
@@ -1066,6 +1078,7 @@ export function useDictationController(): DictationControllerState {
         waitingForPermissionRef.current = false
         pendingPressRef.current = null
         releaseTargetRef.current = null
+        pressEndHandledRef.current = false
         if (payload && typeof (payload as { reason?: unknown }).reason === 'string') {
           const reason = (payload as { reason: string }).reason
           if (reason === 'stuck_key_timeout') {
