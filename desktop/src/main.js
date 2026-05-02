@@ -59,6 +59,9 @@ const processManager = new ChildProcessManager()
 const dictationSettings = require('./main/dictation-settings')
 const DictationManager = require('./main/dictation-manager')
 const recordingIndicatorWindow = require('./main/recording-indicator-window')
+const byokStore = require('./main/byok-store')
+const byokProviders = require('./main/byok-providers')
+const llmRouter = require('./main/llm-router')
 let macPermissions = null
 try {
   macPermissions = require('@nut-tree-fork/node-mac-permissions')
@@ -1261,6 +1264,88 @@ ipcMain.handle('dictation:request-mac-permissions', async () => {
   } catch (error) {
     logLine('dictation_request_mac_permissions_error', error.message)
     return { platform: 'darwin', supported: false, error: error.message }
+  }
+})
+
+// ---------- BYOK API key management ----------
+
+function buildProviderStatusList() {
+  const stored = byokStore.listStoredProviders()
+  return byokProviders.PROVIDERS.map((p) => ({
+    id: p.id,
+    label: p.label,
+    defaultModel: p.defaultModel,
+    hasKey: stored[p.id] === true,
+  }))
+}
+
+ipcMain.handle('byok:list', async () => {
+  try {
+    return {
+      ok: true,
+      providers: buildProviderStatusList(),
+      encryptionAvailable: byokStore.isEncryptionAvailable(),
+    }
+  } catch (error) {
+    logLine('byok_list_error', error.message)
+    return { ok: false, error: 'list_failed' }
+  }
+})
+
+ipcMain.handle('byok:set-key', async (_event, payload) => {
+  try {
+    const id = payload && typeof payload.id === 'string' ? payload.id : null
+    const key = payload && typeof payload.key === 'string' ? payload.key : null
+    if (!id || !key) {
+      return { ok: false, error: 'invalid_request' }
+    }
+    const result = byokStore.setKey(id, key)
+    logLine('byok_set_key', { id, ok: result.ok, error: result.error || null })
+    return result
+  } catch (error) {
+    logLine('byok_set_key_error', error.message)
+    return { ok: false, error: 'set_failed' }
+  }
+})
+
+ipcMain.handle('byok:delete-key', async (_event, payload) => {
+  try {
+    const id = payload && typeof payload.id === 'string' ? payload.id : null
+    if (!id) return { ok: false, error: 'invalid_request' }
+    const result = byokStore.deleteKey(id)
+    logLine('byok_delete_key', { id, ok: result.ok })
+    return result
+  } catch (error) {
+    logLine('byok_delete_key_error', error.message)
+    return { ok: false, error: 'delete_failed' }
+  }
+})
+
+ipcMain.handle('byok:test-key', async (_event, payload) => {
+  try {
+    const id = payload && typeof payload.id === 'string' ? payload.id : null
+    if (!id) return { ok: false, error: 'invalid_request' }
+    const result = await llmRouter.testKey(id)
+    logLine('byok_test_key', { id, ok: result.ok, error: result.error || null, latencyMs: result.latencyMs || null })
+    return result
+  } catch (error) {
+    logLine('byok_test_key_error', error.message)
+    return { ok: false, error: 'test_failed' }
+  }
+})
+
+ipcMain.handle('llm:complete', async (_event, payload) => {
+  try {
+    if (!payload || typeof payload !== 'object') {
+      return { ok: false, error: 'invalid_request' }
+    }
+    const result = await llmRouter.complete(payload)
+    // Never log message bodies — they may contain user/private content.
+    logLine('llm_complete', { provider: payload.provider, ok: result.ok, error: result.error || null })
+    return result
+  } catch (error) {
+    logLine('llm_complete_error', error.message)
+    return { ok: false, error: 'complete_failed' }
   }
 })
 

@@ -18,8 +18,12 @@
     "test": "node --test"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.74",
+    "@ai-sdk/google": "^3.0.67",
+    "@ai-sdk/openai": "^3.0.58",
     "@nut-tree-fork/nut-js": "^4.2.6",
     "@nut-tree-fork/shared": "^4.2.6",
+    "ai": "^6.0.174",
     "node-global-key-listener": "^0.3.0",
     "semver": "^7.6.3",
     "signal-exit": "^4.1.0"

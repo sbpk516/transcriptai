@@ -247,6 +247,10 @@ docs/journal/
 !docs/FEATURE_IMPACT_LOG.md
 !docs/CHANGE_REQUEST_TEMPLATE.md
 
+# Allow tracked feature plans
+!docs/plans/
+!docs/plans/*.md
+
 # Allow guides
 !docs/guides/
 !docs/guides/*.md

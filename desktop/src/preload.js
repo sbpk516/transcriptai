@@ -322,3 +322,57 @@ contextBridge.exposeInMainWorld('transcriptaiDictation', {
   },
 })
 
+contextBridge.exposeInMainWorld('transcriptaiByok', {
+  async listProviders() {
+    try {
+      return await ipcRenderer.invoke('byok:list')
+    } catch (error) {
+      console.error('[Preload] byok:list failed', error)
+      throw error
+    }
+  },
+  async setKey(id, key) {
+    try {
+      if (typeof id !== 'string' || typeof key !== 'string') {
+        throw new Error('Invalid setKey arguments')
+      }
+      return await ipcRenderer.invoke('byok:set-key', { id, key })
+    } catch (error) {
+      console.error('[Preload] byok:set-key failed', error)
+      throw error
+    }
+  },
+  async deleteKey(id) {
+    try {
+      if (typeof id !== 'string') throw new Error('Invalid deleteKey argument')
+      return await ipcRenderer.invoke('byok:delete-key', { id })
+    } catch (error) {
+      console.error('[Preload] byok:delete-key failed', error)
+      throw error
+    }
+  },
+  async testKey(id) {
+    try {
+      if (typeof id !== 'string') throw new Error('Invalid testKey argument')
+      return await ipcRenderer.invoke('byok:test-key', { id })
+    } catch (error) {
+      console.error('[Preload] byok:test-key failed', error)
+      throw error
+    }
+  },
+})
+
+contextBridge.exposeInMainWorld('transcriptaiLlm', {
+  async complete(request) {
+    try {
+      if (!request || typeof request !== 'object') {
+        throw new Error('Invalid complete request')
+      }
+      return await ipcRenderer.invoke('llm:complete', request)
+    } catch (error) {
+      console.error('[Preload] llm:complete failed', error)
+      throw error
+    }
+  },
+})
+

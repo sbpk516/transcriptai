@@ -3,6 +3,7 @@ import { Button, Card } from '../components/Shared'
 import { DEFAULT_SHORTCUT, validateShortcut } from './SettingsValidation'
 import { ModelSettings } from '../modules/settings/ModelSettings'
 import { TranscriptionStats, type TranscriptionData } from '../components/TranscriptionStats'
+import { SettingsByok } from '../modules/byok/SettingsByok'
 
 type DictationSettings = {
   enabled: boolean
@@ -374,6 +375,8 @@ return (
           <ModelSettings />
         </div>
       </Card>
+
+      <SettingsByok />
 
     <Card title="Transcription Activity" subtitle="Quick overview of your transcription usage." icon="📊">
         <TranscriptionStats data={stats} variant="compact" loading={statsLoading} />

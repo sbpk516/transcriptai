@@ -11,6 +11,9 @@ export * from './utils';
 export * from './navigation';
 export * from './updates';
 
+// BYOK / LLM bridge
+export * from './byok';
+
 // Re-export commonly used types for convenience
 export type {
   ApiResponse,
