@@ -690,15 +690,17 @@ async def live_stop(session_id: str):
         if not sess:
             raise KeyError("session not found")
 
-        if is_live_batch_only():
-            # Batch mode: normalize chunks, concatenate, then transcribe once
+        # Always run the canonical batch flow on stop: concatenate chunks, transcribe
+        # the combined audio, persist to DB. Per-chunk partials (when LIVE_BATCH_ONLY=0)
+        # are for live preview only; the final saved transcript is the authoritative text.
+        if True:
             from pathlib import Path
             import subprocess
 
             chunks = list(sess.chunks)
             if not chunks:
                 # Nothing recorded
-                await event_bus.complete(session_id)
+                await event_bus.publish(session_id, {"type": "complete", "call_id": session_id, "final_text_length": 0})
                 return {"session_id": session_id, "final_text": ""}
 
             # Grace period: allow late chunks to finish writing (up to ~1.5s)
@@ -842,8 +844,12 @@ async def live_stop(session_id: str):
             except Exception as e:
                 logger.warning(f"[MIC] failed to update call status for {call_id}: {e}")
 
-            # Mark SSE stream completed for any listeners (harmless if unused)
-            await event_bus.complete(session_id)
+            # Mark SSE stream completed with metadata for renderer (call_id for navigation, length for sanity)
+            await event_bus.publish(session_id, {
+                "type": "complete",
+                "call_id": call_id,
+                "final_text_length": len(final_text),
+            })
             return {
                 "session_id": session_id,
                 "final_text": final_text,
@@ -855,17 +861,28 @@ async def live_stop(session_id: str):
                 "duration_seconds": duration,
                 "nlp_analysis": analysis_summary,
             }
-        else:
-            # Legacy incremental mode: concatenate partials already captured
-            out = live_sessions.stop(session_id)
-            logger.info(f"[MIC] stop session_id={session_id} final_text_len={len(out.get('final_text') or '')}")
-            await event_bus.complete(session_id)
-            return {"session_id": session_id, "final_text": out.get("final_text", "")}
     except KeyError:
         raise HTTPException(status_code=404, detail="session not found")
     except Exception as e:
         logger.error(f"[MIC] live_stop failed session_id={session_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/live/events/{session_id}")
+async def live_events(session_id: str):
+    """SSE stream of partial/complete events for a live mic session."""
+    if not is_live_mic_enabled():
+        raise HTTPException(status_code=404, detail="Live mic disabled")
+
+    async def event_generator():
+        logger.info(f"[MIC-SSE] stream open session_id={session_id}")
+        yield sse_format("ping", {"ts": datetime.now().isoformat()})
+        async for evt in event_bus.subscribe(session_id):
+            evt_type = evt.get("type", "partial")
+            yield sse_format(evt_type, evt)
+        logger.info(f"[MIC-SSE] stream closing session_id={session_id}")
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @app.get("/api/v1/live/debug/session")

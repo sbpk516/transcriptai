@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Header } from '../Header'
 import { Sidebar } from '../Sidebar'
-import { Capture, Transcripts, Settings, Dashboard } from '../../pages'
+import { Capture, Transcripts, Settings, Dashboard, LiveMode } from '../../pages'
 import { DictationOverlay } from '../../modules/dictation/dictationOverlay'
 import type { AppTab, UpdateBridge, UpdateManifest } from '../../types'
 
@@ -77,6 +77,8 @@ const Layout: React.FC = () => {
     switch (activePage) {
       case 'capture':
         return <Capture />
+      case 'live':
+        return <LiveMode />
       case 'transcripts':
         return <Transcripts />
       case 'dashboard':

@@ -4,6 +4,7 @@ import { apiClient } from '@/services/api/client'
 import { exportTranscript } from '@/services/api/results'
 import type { ExportFormat } from '@/services/api/results'
 import { Button, Card } from '../components/Shared'
+import { useLiveRecorder } from '../modules/live/useLiveRecorder'
 // Live batch mode: final transcript only; no SSE stream
 
 interface UploadFile {
@@ -1161,19 +1162,26 @@ function LiveMicPanel({
   onTranscriptComplete?: (payload: { text: string; callId: string | null }) => void
   onTranscriptError?: (message: string) => void
 }) {
-  const [recording, setRecording] = useState(false)
-  const [sessionId, setSessionId] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const mediaRef = useRef<MediaRecorder | null>(null)
-  const streamRef = useRef<MediaStream | null>(null)
-  // Track in-flight chunk uploads to avoid truncation at stop
-  const pendingUploadsRef = useRef<number>(0)
-  const uploadsSettledResolveRef = useRef<null | (() => void)>(null)
-  const uploadsSettledPromiseRef = useRef<Promise<void> | null>(null)
-  // Batch-only live mic (no SSE): we rely on parent to show transcript
-  const [processingFinal, setProcessingFinal] = useState(false)
-  const [callId, setCallId] = useState<string | null>(null)
   const [levels, setLevels] = useState<number[]>(() => Array.from({ length: 12 }, () => 0.2))
+
+  const recorder = useLiveRecorder({
+    onStart: () => {
+      onTranscriptStart?.()
+    },
+    onStop: ({ callId, finalText }) => {
+      if (!finalText || finalText.trim().length === 0) {
+        onTranscriptError?.('Transcription returned empty text. This may indicate silence was detected or transcription failed.')
+        return
+      }
+      onTranscriptComplete?.({ text: finalText, callId })
+    },
+    onError: (message) => {
+      onTranscriptError?.(message)
+    },
+  })
+
+  const recording = recorder.status === 'recording' || recorder.status === 'starting'
+  const processingFinal = recorder.status === 'stopping' || recorder.status === 'saving'
 
   useEffect(() => {
     if (!recording) {
@@ -1186,170 +1194,13 @@ function LiveMicPanel({
     return () => window.clearInterval(id)
   }, [recording])
 
-  const start = useCallback(async () => {
-    try {
-      setError(null)
-      console.log('[DEBUG] LiveMicPanel start() called')
-      console.log('[DEBUG] Previous sessionId:', sessionId)
-
-      // Clear any previous transcript IMMEDIATELY before any async operations
-      if (onTranscriptStart) {
-        console.log('[DEBUG] LiveMicPanel start() - invoking onTranscriptStart to reset transcript state')
-        onTranscriptStart()
-      }
-
-      console.log('[LIVE] start(): creating session…')
-      // Start session
-      const res = await apiClient.post('/api/v1/live/start')
-      const sid = res.data?.session_id as string
-      if (!sid) throw new Error('Failed to create session')
-      setSessionId(sid)
-      console.log('[DEBUG] New sessionId set:', sid)
-      console.log('[LIVE] start(): session created', { sessionId: sid })
-
-      // Get mic
-      console.log('[LIVE] start(): requesting mic via getUserMedia')
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      streamRef.current = stream
-      const preferredMime = 'audio/webm;codecs=opus'
-      const mimeSupported = typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(preferredMime)
-      const recorderOptions = mimeSupported ? { mimeType: preferredMime } : undefined
-      const mr = recorderOptions ? new MediaRecorder(stream, recorderOptions) : new MediaRecorder(stream)
-      mediaRef.current = mr
-      console.log('[LIVE] start(): MediaRecorder ready', {
-        mimeType: mr.mimeType,
-        requestedMime: mimeSupported ? preferredMime : 'default',
-        state: mr.state
-      })
-
-      mr.ondataavailable = async (ev: BlobEvent) => {
-        try {
-          if (!sessionId && sid) setSessionId(sid)
-          const s = sid  // Always use the new session ID from this recording
-          if (!s) return
-          const blob = ev.data
-          if (!blob || blob.size === 0) {
-            console.warn('[LIVE] ondataavailable: empty blob skipped')
-            return
-          }
-          console.log('[LIVE] ondataavailable: chunk ready', { size: blob.size, type: blob.type })
-          const fd = new FormData()
-          const extension = blob.type === 'audio/mp4' ? 'm4a' : 'webm'
-          const file = new File([blob], `chunk_${Date.now()}.${extension}`, { type: blob.type })
-          fd.append('file', file)
-          console.log('[LIVE] uploading chunk…', { sessionId: s, filename: file.name, size: file.size, note: 'Using new session ID from current recording' })
-          const t0 = performance.now()
-          // Initialize a settle promise the first time we upload
-          if (!uploadsSettledPromiseRef.current) {
-            uploadsSettledPromiseRef.current = new Promise<void>(resolve => {
-              uploadsSettledResolveRef.current = resolve
-            })
-          }
-          pendingUploadsRef.current += 1
-          try {
-            await apiClient.post(`/api/v1/live/chunk?session_id=${encodeURIComponent(s)}`, fd)
-          } finally {
-            pendingUploadsRef.current -= 1
-            if (pendingUploadsRef.current <= 0 && uploadsSettledResolveRef.current) {
-              // Resolve and reset so a new recording can recreate it
-              uploadsSettledResolveRef.current()
-              uploadsSettledResolveRef.current = null
-              uploadsSettledPromiseRef.current = null
-            }
-          }
-          const dt = Math.round(performance.now() - t0)
-          console.log('[LIVE] chunk upload done', { ms: dt })
-        } catch (e) {
-          console.warn('[LIVE] chunk upload failed', e)
-        }
-      }
-      mr.start(4000) // 4s chunks
-      console.log('[LIVE] MediaRecorder started with 4000ms timeslice')
-      setRecording(true)
-    } catch (e: any) {
-      setError(e?.message || 'Failed to start recording')
-      console.error('[LIVE] start() failed', e)
-      try { mediaRef.current?.stop() } catch { }
-      try { streamRef.current?.getTracks().forEach(t => t.stop()) } catch { }
-      setRecording(false)
-      setSessionId(null)
+  const handleClick = useCallback(() => {
+    if (recording) {
+      void recorder.stop()
+    } else {
+      void recorder.start()
     }
-  }, [sessionId, onTranscriptStart])
-
-  const stop = useCallback(async () => {
-    try {
-      console.log('[LIVE] stop(): stopping recorder and mic…')
-      try { mediaRef.current?.requestData?.() } catch { }
-      mediaRef.current?.stop()
-      streamRef.current?.getTracks().forEach(t => t.stop())
-    } catch { }
-    setRecording(false)
-    setProcessingFinal(true)
-    try {
-      // Wait a little for MediaRecorder to emit the final dataavailable
-      console.log('[LIVE] stop(): waiting 1200ms for recorder flush…')
-      await new Promise(r => setTimeout(r, 1200))
-      // Then wait for any in-flight chunk uploads to settle (with a cap)
-      const waitForUploads = async (timeoutMs = 5000) => {
-        if (pendingUploadsRef.current <= 0) return
-        const p = uploadsSettledPromiseRef.current || new Promise<void>(resolve => setTimeout(resolve, 0))
-        await Promise.race([
-          p,
-          new Promise<void>(resolve => setTimeout(resolve, timeoutMs))
-        ])
-      }
-      console.log('[LIVE] stop(): waiting for in-flight chunk uploads to settle…', { pending: pendingUploadsRef.current })
-      await waitForUploads(5000)
-      if (sessionId) {
-        console.log('[LIVE] stop(): calling /live/stop', { sessionId })
-        const t0 = performance.now()
-        const res = await apiClient.post(
-          `/api/v1/live/stop?session_id=${encodeURIComponent(sessionId)}`,
-          undefined, // No request body
-          {
-            // Set indefinite timeout for this request
-            timeout: 0,
-          }
-        )
-        const dt = Math.round(performance.now() - t0)
-        const txt = (res.data?.final_text as string) || ''
-        const cid = (res.data?.call_id as string) || null
-        const chunksCount = res.data?.chunks_count
-        const concatOk = res.data?.concat_ok
-        const durationSec = res.data?.duration_seconds
-        const transcriptPath = res.data?.transcript_path
-        const combinedPath = res.data?.combined_path
-        console.log('[LIVE] stop(): response received', { ms: dt, chunksCount, concatOk, durationSec, callId: cid, transcriptPath, combinedPath, textLen: txt.length })
-
-        // Check if transcription was successful
-        if (!txt || txt.trim().length === 0) {
-          console.warn('[LIVE] stop(): Transcription returned empty text', { callId: cid, chunksCount, concatOk })
-          const errorMsg = 'Transcription returned empty text. This may indicate silence was detected or transcription failed.'
-          onTranscriptError && onTranscriptError(errorMsg)
-          return
-        }
-
-        setCallId(cid)
-        console.log('[DEBUG] LiveMicPanel stop() - calling onTranscriptComplete with:', { textLength: txt.length, callId: cid, textPreview: txt.substring(0, 50) })
-        onTranscriptComplete && onTranscriptComplete({ text: txt, callId: cid })
-        console.log('[DEBUG] LiveMicPanel stop() - onTranscriptComplete completed')
-        setSessionId(null)
-      } else {
-        console.log('[DEBUG] LiveMicPanel stop() - no sessionId, calling onTranscriptError')
-        onTranscriptError && onTranscriptError('Session not found')
-      }
-    } catch (e) {
-      console.warn('[LIVE] stop() failed', e)
-      const msg = e instanceof Error ? e.message : 'Failed to generate transcript'
-      console.log('[DEBUG] LiveMicPanel stop() - error occurred, calling onTranscriptError with:', msg)
-      onTranscriptError && onTranscriptError(msg)
-      // Only clear session on error - success path already clears it at line 1337
-      setSessionId(null)
-    } finally {
-      setProcessingFinal(false)
-      // Don't clear sessionId here - it causes race condition with next recording's start()
-    }
-  }, [sessionId, onTranscriptComplete, onTranscriptError])
+  }, [recording, recorder])
 
   return (
     <div className="space-y-4">
@@ -1359,20 +1210,20 @@ function LiveMicPanel({
             ? 'Listening for every detail...'
             : processingFinal
               ? 'Processing final transcript…'
-              : callId
+              : recorder.callId
                 ? 'Transcript ready — see Live Transcription or Transcripts tab.'
                 : 'Press record to capture high-fidelity audio.'}
         </div>
-        {sessionId && (
+        {recorder.sessionId && (
           <span className="rounded-full border border-white/20 px-3 py-1 text-xs text-white/70">
-            Session · {sessionId.slice(0, 8)}
+            Session · {recorder.sessionId.slice(0, 8)}
           </span>
         )}
       </div>
-      {error && <div className="rounded-xl border border-rose-400/30 bg-rose-500/10 p-3 text-xs text-rose-100">{error}</div>}
+      {recorder.error && <div className="rounded-xl border border-rose-400/30 bg-rose-500/10 p-3 text-xs text-rose-100">{recorder.error}</div>}
       <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
         <button
-          onClick={recording ? stop : start}
+          onClick={handleClick}
           className={`relative flex h-28 w-28 items-center justify-center rounded-full border-2 border-pink-500/50 bg-gradient-to-br from-pink-500 via-red-500 to-orange-500 text-white shadow-glow-pink transition-transform hover:scale-105 ${recording ? 'animate-mic-ripple' : ''
             }`}
         >

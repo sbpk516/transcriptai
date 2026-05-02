@@ -14,6 +14,9 @@ export * from './updates';
 // BYOK / LLM bridge
 export * from './byok';
 
+// Live mode (real-time transcription)
+export * from './live';
+
 // Re-export commonly used types for convenience
 export type {
   ApiResponse,

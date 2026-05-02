@@ -17,6 +17,7 @@ const menuItems: Array<{
   accent: string
 }> = [
     { id: 'capture', label: 'Capture', icon: '🎙️', description: 'Record or upload audio', accent: 'from-cyan-400 to-blue-500' },
+    { id: 'live', label: 'Live Mode', icon: '🟢', description: 'Real-time transcription', accent: 'from-emerald-400 to-cyan-500' },
     { id: 'transcripts', label: 'Transcripts', icon: '📄', description: 'History of transcripts', accent: 'from-purple-400 to-pink-500' },
     { id: 'settings', label: 'Settings', icon: '⚙️', description: 'Choose models', accent: 'from-blue-400 to-slate-400' },
   ]

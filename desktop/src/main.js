@@ -554,6 +554,7 @@ async function startBackendDev() {
       TRANSCRIPTAI_USE_MLX: '0',
       TRANSCRIPTAI_LIVE_MIC: '1',
       TRANSCRIPTAI_LIVE_TRANSCRIPTION: '1',
+      TRANSCRIPTAI_LIVE_BATCH_ONLY: '0',
     }
 
     const bundlePath = path.join(__dirname, '../../backend/dist/transcriptai-backend', 'transcriptai-backend')
@@ -598,6 +599,7 @@ async function startBackendDev() {
     TRANSCRIPTAI_USE_MLX: process.env.TRANSCRIPTAI_USE_MLX || '0',
     TRANSCRIPTAI_LIVE_MIC: '1',
     TRANSCRIPTAI_LIVE_TRANSCRIPTION: '1',
+    TRANSCRIPTAI_LIVE_BATCH_ONLY: '0',
   }
 
   const cwd = path.join(__dirname, '..', '..', 'backend')
@@ -698,6 +700,7 @@ async function startBackendProd() {
     TRANSCRIPTAI_USE_MLX: '0',
     TRANSCRIPTAI_LIVE_MIC: '1',
     TRANSCRIPTAI_LIVE_TRANSCRIPTION: '1',
+    TRANSCRIPTAI_LIVE_BATCH_ONLY: '0',
   }
 
   logLine('STEP 7: Environment vars for Python backend', {
