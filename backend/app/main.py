@@ -2,7 +2,7 @@
 Main FastAPI application for TranscriptAI.
 """
 import time
-from fastapi import FastAPI, Depends, HTTPException, File, UploadFile, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, File, UploadFile, BackgroundTasks, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, PlainTextResponse, FileResponse
 from sqlalchemy.orm import Session
@@ -883,6 +883,31 @@ async def live_events(session_id: str):
         logger.info(f"[MIC-SSE] stream closing session_id={session_id}")
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@app.post("/api/v1/calls/{call_id}/rephrased")
+async def save_rephrased_transcript(
+    call_id: str,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    """Persist the LLM-polished transcript alongside the canonical raw text.
+
+    Called by the renderer after /live/stop completes. Updates the existing
+    Transcript row's rephrased_text column. Idempotent.
+    """
+    if not is_live_mic_enabled():
+        raise HTTPException(status_code=404, detail="Live mic disabled")
+    rephrased = payload.get("rephrased_text")
+    if not isinstance(rephrased, str):
+        raise HTTPException(status_code=400, detail="rephrased_text must be a string")
+    record = db.query(Transcript).filter(Transcript.call_id == call_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="transcript not found")
+    record.rephrased_text = rephrased
+    db.commit()
+    logger.info(f"[REPHRASE] saved rephrased_text call_id={call_id} len={len(rephrased)}")
+    return {"ok": True, "call_id": call_id, "rephrased_length": len(rephrased)}
 
 
 @app.get("/api/v1/live/debug/session")

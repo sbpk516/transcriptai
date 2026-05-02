@@ -42,10 +42,11 @@ class Call(Base):
 class Transcript(Base):
     """Transcript model for storing call transcripts."""
     __tablename__ = "transcripts"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     call_id = Column(String(100), index=True, nullable=False)
     text = Column(Text, nullable=False)
+    rephrased_text = Column(Text, nullable=True)
     confidence = Column(Integer)  # Confidence score (0-100)
     language = Column(String(10), default="en")
     created_at = Column(DateTime(timezone=True), server_default=func.now())

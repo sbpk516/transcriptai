@@ -17,6 +17,9 @@ export * from './byok';
 // Live mode (real-time transcription)
 export * from './live';
 
+// Rephrasing (Phase 3 polished transcripts)
+export * from './rephrase';
+
 // Re-export commonly used types for convenience
 export type {
   ApiResponse,
