@@ -336,6 +336,8 @@ def _dedup_log_pass(pass_name: str, before: str, after: str) -> None:
             len(before), len(after),
             _diff_snippet(before, after),
         )
+        logger.info("[DEDUP][%s] BEFORE=%r", pass_name, before)
+        logger.info("[DEDUP][%s] AFTER =%r", pass_name, after)
     else:
         logger.debug("[DEDUP][%s] no change", pass_name)
 
@@ -498,6 +500,7 @@ class WhisperProcessor:
                 "[WHISPER-RAW] complete in %.2fs: words=%d chars=%d text=%r",
                 duration, raw_word_count, len(raw_text), raw_text[:300]
             )
+            logger.info("[WHISPER-RAW-FULL] %r", raw_text)
             logger.debug(f"Transcription result: {result}")
             
             # Normalize response to match expected output structure

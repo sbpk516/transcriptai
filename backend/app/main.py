@@ -707,7 +707,8 @@ async def live_stop(session_id: str):
             try:
                 import time
                 t_start = time.time()
-                last_count = len(chunks)
+                start_count = len(chunks)
+                last_count = start_count
                 while time.time() - t_start < 1.5:
                     # Re-scan chunks list
                     cur = list(sess.chunks)
@@ -717,7 +718,10 @@ async def live_stop(session_id: str):
                         await asyncio.sleep(0.1)
                     else:
                         await asyncio.sleep(0.1)
-                logger.info(f"[MIC] stop quiesce complete session_id={session_id} chunks_count={len(chunks)}")
+                logger.info(
+                    "[STOP] grace session_id=%s chunks_at_grace_start=%d at_grace_end=%d added=%d",
+                    session_id, start_count, len(chunks), len(chunks) - start_count,
+                )
             except Exception:
                 pass
 
@@ -760,6 +764,26 @@ async def live_stop(session_id: str):
                     raise HTTPException(status_code=500, detail="audio_concat_failed")
                 combined_to_use = str(combined_path)
                 concat_ok = True
+                # Log ffmpeg stderr on success too — it reports dropped frames / discontinuities
+                # that we silently ignore otherwise.
+                if proc.stderr:
+                    logger.info("[CONCAT] ffmpeg stderr=%s", proc.stderr.strip())
+                # Compare transcoded WAV duration to expected (chunks * timeslice).
+                try:
+                    actual = float(audio_processor.analyze_audio_file(combined_to_use).get("duration_seconds") or 0)
+                    expected = float(len(chunks)) * 4.0
+                    delta = actual - expected
+                    logger.info(
+                        "[CONCAT] duration_check session_id=%s chunks=%d expected=%.2fs actual=%.2fs delta=%.2fs",
+                        session_id, len(chunks), expected, actual, delta,
+                    )
+                    if abs(delta) > 1.0:
+                        logger.warning(
+                            "[CONCAT] duration mismatch >1s session_id=%s expected=%.2fs actual=%.2fs",
+                            session_id, expected, actual,
+                        )
+                except Exception as _e:
+                    logger.info("[CONCAT] duration_check skipped: %s", _e)
             except HTTPException:
                 raise
             except Exception as e:
