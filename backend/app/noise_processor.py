@@ -15,6 +15,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .native_libs import resolve_native_lib
+
 logger = logging.getLogger('transcriptai.noise_processor')
 
 # RNNoise constants
@@ -42,31 +44,22 @@ class RNNoiseProcessor:
         self._loaded = False
 
     def _load_library(self) -> bool:
-        """Load RNNoise dylib."""
+        """Load the RNNoise shared library (.dylib/.dll/.so depending on platform)."""
         if self._loaded:
             return self._lib is not None
 
         self._loaded = True
 
-        # Find library path
-        lib_paths = [
-            # Development (relative to this file)
-            Path(__file__).parent.parent.parent / "backend-cpp" / "librnnoise.dylib",
-            # Production (bundled in app)
-            Path(os.getenv("TRANSCRIPTAI_RESOURCES_DIR", "")) / "librnnoise.dylib",
-            # Fallback: next to whisper-server
-            Path(__file__).parent.parent.parent / "backend-cpp" / "lib" / "librnnoise.dylib",
-        ]
-
-        for lib_path in lib_paths:
-            if lib_path.exists():
-                try:
-                    self._lib = ctypes.CDLL(str(lib_path))
-                    self._setup_functions()
-                    logger.info(f"Loaded RNNoise from {lib_path}")
-                    return True
-                except OSError as e:
-                    logger.warning(f"Failed to load {lib_path}: {e}")
+        # Resolve the platform-specific library (librnnoise.dylib / rnnoise.dll / librnnoise.so)
+        lib_path = resolve_native_lib("rnnoise")
+        if lib_path:
+            try:
+                self._lib = ctypes.CDLL(str(lib_path))
+                self._setup_functions()
+                logger.info(f"Loaded RNNoise from {lib_path}")
+                return True
+            except OSError as e:
+                logger.warning(f"Failed to load {lib_path}: {e}")
 
         logger.warning("RNNoise library not found - noise suppression disabled")
         return False

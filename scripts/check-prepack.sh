@@ -33,17 +33,20 @@ else
 fi
 
 # 2b) Whisper.cpp artifacts (replaces MLX/PyTorch for lean builds)
+# This prepack check runs in the macOS DMG flow; native binaries live under
+# backend-cpp/mac/ (see backend-cpp/win/ for the Windows equivalents).
 BACKEND_CPP="$ROOT_DIR/backend-cpp"
+BACKEND_CPP_MAC="$BACKEND_CPP/mac"
 
-if [[ ! -x "$BACKEND_CPP/whisper-server" ]]; then
-  fail "whisper-server not found at $BACKEND_CPP/whisper-server. Build with: cd backend-cpp && make whisper-server"
+if [[ ! -x "$BACKEND_CPP_MAC/whisper-server" ]]; then
+  fail "whisper-server not found at $BACKEND_CPP_MAC/whisper-server. Build with: cd backend-cpp && make whisper-server"
 fi
 ok "whisper-server binary present"
 
 # Check for required dylibs
-DYLIB_COUNT=$(ls "$BACKEND_CPP"/*.dylib 2>/dev/null | wc -l | tr -d ' ')
+DYLIB_COUNT=$(ls "$BACKEND_CPP_MAC"/*.dylib 2>/dev/null | wc -l | tr -d ' ')
 if [[ "$DYLIB_COUNT" -eq 0 ]]; then
-  fail "No .dylib files found in $BACKEND_CPP. Build whisper.cpp first."
+  fail "No .dylib files found in $BACKEND_CPP_MAC. Build whisper.cpp first."
 fi
 ok "Dynamic libraries present ($DYLIB_COUNT .dylib files)"
 

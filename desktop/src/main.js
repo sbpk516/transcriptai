@@ -62,19 +62,58 @@ const recordingIndicatorWindow = require('./main/recording-indicator-window')
 const byokStore = require('./main/byok-store')
 const byokProviders = require('./main/byok-providers')
 const llmRouter = require('./main/llm-router')
+// macOS-only native permissions module. Listed as an optionalDependency so
+// `npm install` on Windows/Linux does not fail building a macOS-only native addon.
 let macPermissions = null
-try {
-  macPermissions = require('@nut-tree-fork/node-mac-permissions')
-  logLine('info', 'Successfully loaded @nut-tree-fork/node-mac-permissions')
-} catch (error) {
-  logLine('error', 'Failed to load @nut-tree-fork/node-mac-permissions', error.message)
-  macPermissions = null
+if (process.platform === 'darwin') {
+  try {
+    macPermissions = require('@nut-tree-fork/node-mac-permissions')
+    logLine('info', 'Successfully loaded @nut-tree-fork/node-mac-permissions')
+  } catch (error) {
+    logLine('error', 'Failed to load @nut-tree-fork/node-mac-permissions', error.message)
+    macPermissions = null
+  }
 }
 
-// Ensure ffmpeg/ffprobe are visible when spawned from app (Homebrew paths)
+// Ensure ffmpeg/ffprobe are visible when spawned from the app.
+// macOS: prepend Homebrew locations. Windows: prepend the bundled ffmpeg dir
+// (ffmpeg.exe/ffprobe.exe are shipped under resources). Other platforms: unchanged.
 const HOMEBREW_BIN = '/opt/homebrew/bin'
 const USR_LOCAL_BIN = '/usr/local/bin'
-const withBrewPath = (p) => [HOMEBREW_BIN, USR_LOCAL_BIN, p || ''].filter(Boolean).join(':')
+const withBrewPath = (p) => {
+  const current = p || ''
+  if (process.platform === 'darwin') {
+    return [HOMEBREW_BIN, USR_LOCAL_BIN, current].filter(Boolean).join(':')
+  }
+  if (process.platform === 'win32') {
+    // ffmpeg.exe/ffprobe.exe: at the resources root in packaged builds, and under
+    // backend-cpp/<platform>/ in dev. Prepending the dir lets the spawned backend
+    // (and yt-dlp/pydub, which look up `ffmpeg` on PATH) find it.
+    const ffmpegDir = app.isPackaged
+      ? process.resourcesPath
+      : path.join(__dirname, '..', '..', 'backend-cpp', nativePlatformDir())
+    return [ffmpegDir, current].filter(Boolean).join(path.delimiter)
+  }
+  return current
+}
+
+// Platform-specific native binary naming/locations.
+// whisper-server is shipped as a bare executable on macOS and a .exe on Windows.
+const whisperBinaryName = () => (process.platform === 'win32' ? 'whisper-server.exe' : 'whisper-server')
+const backendBinaryName = () => (process.platform === 'win32' ? 'transcriptai-backend.exe' : 'transcriptai-backend')
+// Dev layout: backend-cpp/{mac,win,linux}/ holds the per-OS native binaries.
+const nativePlatformDir = () => (process.platform === 'win32' ? 'win' : (process.platform === 'darwin' ? 'mac' : 'linux'))
+
+// whisper.cpp defaults to 4 threads. On multi-core CPUs (esp. Windows where there is
+// no GPU/Metal build) that leaves most cores idle. Use ~half the logical CPUs, capped
+// at 8 (whisper sees diminishing returns / memory-bandwidth limits beyond that).
+// Override with TRANSCRIPTAI_WHISPER_THREADS.
+const whisperThreads = () => {
+  const envVal = parseInt(process.env.TRANSCRIPTAI_WHISPER_THREADS || '', 10)
+  if (Number.isInteger(envVal) && envVal > 0) return String(envVal)
+  const cores = require('os').cpus()?.length || 4
+  return String(Math.max(4, Math.min(8, Math.floor(cores / 2))))
+}
 
 // Helper: Find free port
 function getFreePort() {
@@ -94,18 +133,33 @@ async function killExistingBackendProcesses() {
   logLine('cleanup_existing_backends_start')
 
   try {
-    // Only kill processes that match TranscriptAI-specific patterns
-    const processPatterns = [
-      'transcriptai-backend',      // Bundled backend binary
-      'uvicorn.*app\\.main:app'    // Python dev backend
-    ]
+    if (process.platform === 'win32') {
+      // Windows: kill the bundled backend and whisper server by image name.
+      // (The Python dev backend runs under python.exe and is left to the normal
+      //  tracked-PID cleanup to avoid killing unrelated python processes.)
+      const imageNames = [backendBinaryName(), whisperBinaryName()]
+      for (const image of imageNames) {
+        try {
+          execSync(`taskkill /F /T /IM "${image}"`, { stdio: 'ignore' })
+          logLine('cleanup_killed_image', { image })
+        } catch (_) {
+          // Ignore - process may not be running
+        }
+      }
+    } else {
+      // Only kill processes that match TranscriptAI-specific patterns
+      const processPatterns = [
+        'transcriptai-backend',      // Bundled backend binary
+        'uvicorn.*app\\.main:app'    // Python dev backend
+      ]
 
-    for (const pattern of processPatterns) {
-      try {
-        execSync(`pkill -f "${pattern}" 2>/dev/null || true`, { stdio: 'ignore' })
-        logLine('cleanup_killed_pattern', { pattern })
-      } catch (_) {
-        // Ignore errors - process may not exist
+      for (const pattern of processPatterns) {
+        try {
+          execSync(`pkill -f "${pattern}" 2>/dev/null || true`, { stdio: 'ignore' })
+          logLine('cleanup_killed_pattern', { pattern })
+        } catch (_) {
+          // Ignore errors - process may not exist
+        }
       }
     }
 
@@ -514,14 +568,14 @@ async function startBackendDev() {
   logLine('allocated_ports', { whisper: WHISPER_PORT, llama: LLAMA_PORT })
 
   // Spawn Whisper Server (C++)
-  const whisperBinary = path.join(__dirname, '../../backend-cpp/whisper-server')
+  const whisperBinary = path.join(__dirname, '../../backend-cpp', nativePlatformDir(), whisperBinaryName())
   const whisperModel = path.join(__dirname, '../../backend-cpp/models/ggml-base.en.bin')
 
   if (fs.existsSync(whisperBinary) && fs.existsSync(whisperModel)) {
     logLine('info', 'Spawning Whisper Server', { binary: whisperBinary, model: whisperModel, port: WHISPER_PORT })
 
     // Build whisper-server arguments
-    const whisperArgs = ['-m', whisperModel, '--port', String(WHISPER_PORT)]
+    const whisperArgs = ['-m', whisperModel, '--port', String(WHISPER_PORT), '-t', whisperThreads()]
 
     // Add VAD flags if enabled and model exists
     const vadModelPath = path.join(__dirname, '../../backend-cpp/models/silero-vad.bin')
@@ -557,7 +611,7 @@ async function startBackendDev() {
       TRANSCRIPTAI_LIVE_BATCH_ONLY: '0',
     }
 
-    const bundlePath = path.join(__dirname, '../../backend/dist/transcriptai-backend', 'transcriptai-backend')
+    const bundlePath = path.join(__dirname, '../../backend/dist/transcriptai-backend', backendBinaryName())
     if (fs.existsSync(bundlePath)) {
       logLine('spawn_backend_dev', 'FORCE_BUNDLED_BACKEND=1', bundlePath)
       backendProcess = processManager.spawn(bundlePath, [], 'bundled-backend', {
@@ -642,8 +696,8 @@ async function startBackendProd() {
   WHISPER_PORT = await getFreePort()
   logLine('STEP 2: Whisper port assigned', { WHISPER_PORT })
 
-  const backendPath = path.join(process.resourcesPath, 'backend', 'transcriptai-backend', process.platform === 'win32' ? 'transcriptai-backend.exe' : 'transcriptai-backend')
-  const whisperPath = path.join(process.resourcesPath, 'whisper-server')
+  const backendPath = path.join(process.resourcesPath, 'backend', 'transcriptai-backend', backendBinaryName())
+  const whisperPath = path.join(process.resourcesPath, whisperBinaryName())
   const whisperModelPath = path.join(process.resourcesPath, 'models', 'ggml-base.en.bin')
 
   logLine('STEP 3: Paths resolved', {
@@ -664,7 +718,7 @@ async function startBackendProd() {
     logLine('STEP 5: Starting whisper-server...')
 
     // Build whisper-server arguments
-    const whisperArgs = ['-m', whisperModelPath, '--port', String(WHISPER_PORT)]
+    const whisperArgs = ['-m', whisperModelPath, '--port', String(WHISPER_PORT), '-t', whisperThreads()]
 
     // Add VAD flags if enabled and model exists (production mode)
     const vadModelPath = path.join(process.resourcesPath, 'models', 'silero-vad.bin')
@@ -694,6 +748,7 @@ async function startBackendProd() {
     TRANSCRIPTAI_MODE: 'desktop',
     TRANSCRIPTAI_PORT: String(port),
     TRANSCRIPTAI_DATA_DIR: dataDir(),
+    TRANSCRIPTAI_RESOURCES_DIR: process.resourcesPath,
     TRANSCRIPTAI_BUNDLED_MODELS_DIR: path.join(process.resourcesPath, 'models'),
     WHISPER_CPP_PORT: String(WHISPER_PORT),
     WHISPER_CPP_MODEL: whisperModelPath,

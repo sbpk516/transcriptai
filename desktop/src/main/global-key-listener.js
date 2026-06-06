@@ -12,6 +12,13 @@ function resolveMacServerPath() {
   return path.join(__dirname, '..', '..', 'node_modules', 'node-global-key-listener', 'bin', 'MacKeyServer')
 }
 
+function resolveWinServerPath() {
+  if (app && app.isPackaged) {
+    return path.join(process.resourcesPath, 'bin', 'WinKeyServer.exe')
+  }
+  return path.join(__dirname, '..', '..', 'node_modules', 'node-global-key-listener', 'bin', 'WinKeyServer.exe')
+}
+
 function createGlobalKeyListenerFactory() {
   if (Factory) {
     return Factory
@@ -29,11 +36,19 @@ function createGlobalKeyListenerFactory() {
   class PatchedGlobalKeyboardListener extends BaseListener {
     constructor(config = {}) {
       const mergedConfig = { ...config }
-      const macConfig = { ...(mergedConfig.mac || {}) }
-      if (!macConfig.serverPath) {
-        macConfig.serverPath = resolveMacServerPath()
+      if (process.platform === 'win32') {
+        const winConfig = { ...(mergedConfig.windows || {}) }
+        if (!winConfig.serverPath) {
+          winConfig.serverPath = resolveWinServerPath()
+        }
+        mergedConfig.windows = winConfig
+      } else {
+        const macConfig = { ...(mergedConfig.mac || {}) }
+        if (!macConfig.serverPath) {
+          macConfig.serverPath = resolveMacServerPath()
+        }
+        mergedConfig.mac = macConfig
       }
-      mergedConfig.mac = macConfig
       super(mergedConfig)
     }
   }

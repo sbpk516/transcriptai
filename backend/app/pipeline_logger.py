@@ -18,13 +18,9 @@ class PipelineLogger:
     """
     
     def __init__(self):
-        # Create logs directory under TRANSCRIPTAI_DATA_DIR when available
-        data_dir = os.getenv("TRANSCRIPTAI_DATA_DIR")
-        if data_dir:
-            base = Path(data_dir) / "logs"
-        else:
-            # macOS user library default; fallback to current working dir logs if not macOS
-            base = Path.home() / "Library" / "Application Support" / "TranscriptAI" / "logs" if os.name == "posix" else Path.cwd() / "logs"
+        # Logs directory (platform-appropriate; honors TRANSCRIPTAI_DATA_DIR when set)
+        from .native_libs import app_data_dir
+        base = app_data_dir("logs")
         try:
             base.mkdir(parents=True, exist_ok=True)
         except Exception:

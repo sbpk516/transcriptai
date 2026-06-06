@@ -1,0 +1,96 @@
+name: Build Windows
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            desktop/package-lock.json
+            frontend/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup CMake
+        uses: lukka/get-cmake@latest
+
+      # MSVC is preinstalled on windows-latest; this makes cl/cmake generators available.
+      - name: Setup MSVC dev environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Install Node dependencies (desktop)
+        working-directory: desktop
+        run: npm ci
+
+      - name: Install Node dependencies (frontend)
+        working-directory: frontend
+        run: npm ci
+
+      - name: Download Whisper model
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path backend-cpp/models | Out-Null
+          $model = "backend-cpp/models/ggml-base.en.bin"
+          if (-not (Test-Path $model)) {
+            Invoke-WebRequest -Uri "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin" -OutFile $model
+          }
+
+      - name: Build native binaries (whisper-server, rnnoise, ffmpeg)
+        shell: pwsh
+        run: |
+          ./backend-cpp/scripts/build-whisper-win.ps1
+          ./backend-cpp/scripts/build-rnnoise-win.ps1
+          ./backend-cpp/scripts/fetch-ffmpeg-win.ps1
+
+      - name: Build backend (PyInstaller)
+        shell: pwsh
+        working-directory: backend
+        run: ./build-backend.ps1
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build:electron
+
+      - name: Build NSIS installer
+        working-directory: desktop
+        run: npm run dist:win
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TranscriptAI-Windows
+          path: desktop/dist/*.exe
+
+      - name: Attach to GitHub Release (on tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem desktop/dist -Filter *.exe | Select-Object -First 1
+          gh release upload $env:GITHUB_REF_NAME $installer.FullName --clobber

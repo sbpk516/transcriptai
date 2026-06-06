@@ -287,3 +287,8 @@ local-npm-cache/
 transcripts/
 node_modules/
 backend-cpp/models/*.onnx
+
+# Large Windows ffmpeg binaries (~200MB each) — fetched at build time via
+# backend-cpp/scripts/fetch-ffmpeg-win.ps1, never committed.
+backend-cpp/win/ffmpeg.exe
+backend-cpp/win/ffprobe.exe

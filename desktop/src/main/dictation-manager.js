@@ -335,13 +335,12 @@ class DictationManager extends EventEmitter {
     }
 
     const isMac = process.platform === 'darwin'
-    const modifier =
-      (isMac && (Key.LeftCmd ?? Key.LeftSuper ?? Key.LeftMeta)) ??
-      Key.LeftControl ??
-      Key.LeftCtrl ??
-      Key.LeftMeta
+    // Paste shortcut modifier: Cmd on macOS, Ctrl on Windows/Linux.
+    const modifier = isMac
+      ? (Key.LeftCmd ?? Key.LeftSuper ?? Key.LeftMeta)
+      : (Key.LeftControl ?? Key.LeftCtrl ?? Key.LeftMeta)
 
-    if (modifier === undefined) {
+    if (modifier === undefined || modifier === false) {
       return { ok: false, reason: 'modifier_unavailable' }
     }
 
@@ -826,6 +825,9 @@ class DictationManager extends EventEmitter {
   }
 
   _isModifierKeyCode(keyCode) {
+    // Modifier keyup deferral works around a macOS-only "phantom keyup" quirk in
+    // MacKeyServer. WinKeyServer does not emit phantom keyups, so no deferral is
+    // needed on Windows/Linux — returning false here is intentional, not an oversight.
     if (process.platform !== 'darwin') {
       return false
     }

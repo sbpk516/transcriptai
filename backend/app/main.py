@@ -501,6 +501,48 @@ async def get_pipeline_debug(call_id: str):
 # PHASE A: Mic-based live capture endpoints (feature-flagged)
 # ============================================================================
 
+def _norm_word(w: str) -> str:
+    """Normalize a word for overlap comparison (lowercase, strip punctuation)."""
+    return w.lower().strip(".,!?;:\"'()[]")
+
+
+def _strip_leading_overlap(full_text: str, prefix_text: str) -> str:
+    """
+    Remove the leading words of full_text that duplicate prefix_text.
+
+    Live chunks are transcribed as (chunk_0 + chunk_N), so every chunk's text is
+    prefixed with chunk_0's words. We strip that prefix so only chunk_N's new words
+    are emitted.
+
+    Whisper can transcribe chunk_0's portion with minor variance across merges
+    (e.g. "I'm" vs "I am"), which would defeat a plain longest-common-prefix. So we
+    primarily anchor on the LAST few words of chunk_0 (its stable tail) and cut
+    after their first occurrence in full_text; we fall back to a word-level
+    longest-common-prefix if that anchor isn't found.
+    """
+    full_words = full_text.split()
+    pre_words = prefix_text.split()
+    if not pre_words:
+        return full_text.strip()
+
+    nfull = [_norm_word(w) for w in full_words]
+    npre = [_norm_word(w) for w in pre_words]
+
+    # Primary: anchor on the last K words of chunk_0; cut after their first match.
+    k = min(4, len(npre))
+    anchor = npre[-k:]
+    for start in range(0, len(nfull) - k + 1):
+        if nfull[start:start + k] == anchor:
+            return " ".join(full_words[start + k:]).strip()
+
+    # Fallback: word-level longest common prefix.
+    i = 0
+    limit = min(len(full_words), len(pre_words))
+    while i < limit and nfull[i] == npre[i]:
+        i += 1
+    return " ".join(full_words[i:]).strip()
+
+
 @app.post("/api/v1/live/start")
 async def live_start():
     if not is_live_mic_enabled():
@@ -615,38 +657,18 @@ async def live_chunk(session_id: str, file: UploadFile = File(...)):
                 part = whisper_processor.transcribe_audio(wav_path_to_transcribe)
                 full_text = part.get("text", "") if part.get("transcription_success") else ""
                 
-                # Logic to extract only NEW text:
-                # If idx > 0, the transcription includes the Header (Chunk 0) text.
-                # We should subtract the accumulated text to avoid duplication in frontend.
+                # Extract only this chunk's NEW text.
+                # For idx > 0 the merged audio is (chunk_0 + chunk_idx), so the
+                # transcription is always prefixed with chunk_0's text. Strip that
+                # stable chunk_0 prefix. (The old logic compared against the full
+                # accumulated text, which can never prefix-match — the merged audio
+                # never contains chunks 1..idx-1 — so it re-emitted chunk_0 every
+                # time, producing the duplicated transcript.)
                 text_to_emit = full_text
                 if idx > 0:
-                    # Get all accumulated text from previous chunks
-                    accumulated_text = " ".join([p for p in sess.partials[:idx] if p]).strip()
-
-                    # Try exact prefix match first
-                    if accumulated_text and full_text.startswith(accumulated_text):
-                        text_to_emit = full_text[len(accumulated_text):].strip()
-                    elif accumulated_text:
-                        # Fuzzy overlap detection: find where accumulated_text ends in full_text
-                        # Normalize both strings for comparison
-                        norm_acc = accumulated_text.lower().replace(".", "").replace(",", "").strip()
-                        norm_full = full_text.lower().replace(".", "").replace(",", "").strip()
-
-                        # Try to find overlap by checking if accumulated appears near start
-                        if norm_full.startswith(norm_acc):
-                            # Find approximate cut point in original full_text
-                            text_to_emit = full_text[len(accumulated_text):].strip()
-                        else:
-                            # Last resort: look for the last few words of accumulated in full_text
-                            acc_words = accumulated_text.split()
-                            if len(acc_words) >= 3:
-                                search_phrase = " ".join(acc_words[-3:]).lower()
-                                norm_full_lower = full_text.lower()
-                                find_idx = norm_full_lower.find(search_phrase)
-                                if find_idx != -1:
-                                    cut_point = find_idx + len(search_phrase)
-                                    text_to_emit = full_text[cut_point:].strip()
-                                    logger.debug(f"[MIC] fuzzy dedup: found overlap at {find_idx}, cut at {cut_point}")
+                    chunk0_text = sess.partials[0] if sess.partials else ""
+                    if chunk0_text:
+                        text_to_emit = _strip_leading_overlap(full_text, chunk0_text)
                 
                 logger.info(f"[MIC] chunk transcribed session_id={session_id} idx={idx} full_len={len(full_text)} emit_len={len(text_to_emit)}")
                 live_sessions.set_partial(session_id, idx, text_to_emit)

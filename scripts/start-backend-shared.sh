@@ -11,8 +11,8 @@ export TRANSCRIPTAI_LIVE_MIC="${TRANSCRIPTAI_LIVE_MIC:-1}"
 export TRANSCRIPTAI_LIVE_TRANSCRIPTION="${TRANSCRIPTAI_LIVE_TRANSCRIPTION:-1}"
 export TRANSCRIPTAI_LIVE_BATCH_ONLY="${TRANSCRIPTAI_LIVE_BATCH_ONLY:-0}"
 
-# Resolve whisper-server + model for web/dev runs.
-WHISPER_SERVER_PATH="${WHISPER_SERVER_PATH:-$ROOT_DIR/backend-cpp/whisper-server}"
+# Resolve whisper-server + model for web/dev runs (macOS native binary under mac/).
+WHISPER_SERVER_PATH="${WHISPER_SERVER_PATH:-$ROOT_DIR/backend-cpp/mac/whisper-server}"
 WHISPER_CPP_MODEL="${WHISPER_CPP_MODEL:-$ROOT_DIR/backend-cpp/models/ggml-base.en.bin}"
 
 # Dynamic port allocation with file-based communication for production desktop app

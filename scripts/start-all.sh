@@ -136,7 +136,7 @@ start_backend() {
       log "VAD enabled but model not found at $VAD_MODEL_PATH"
     fi
 
-    ../backend-cpp/whisper-server "${WHISPER_ARGS[@]}" > /tmp/whisper_server.log 2>&1 &
+    ../backend-cpp/mac/whisper-server "${WHISPER_ARGS[@]}" > /tmp/whisper_server.log 2>&1 &
     WHISPER_PID=$!
     echo $WHISPER_PID > /tmp/transcriptai_whisper.pid
     export WHISPER_CPP_PORT=8091

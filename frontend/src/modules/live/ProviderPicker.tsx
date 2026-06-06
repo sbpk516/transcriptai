@@ -2,6 +2,9 @@ import React, { useEffect, useState } from 'react'
 import type { ProviderId, ProviderInfo } from '../../types/byok'
 
 const STORAGE_KEY = 'transcriptai.live.provider'
+// Sentinel persisted when the user explicitly turns polishing OFF (local-only).
+// Distinguishes "user chose off" (stay null) from "not chosen yet" (auto-select first).
+const OFF_VALUE = 'off'
 
 interface ProviderPickerProps {
   value: ProviderId | null
@@ -31,8 +34,11 @@ export const ProviderPicker: React.FC<ProviderPickerProps> = ({ value, onChange 
         if (value === null && withKeys.length > 0) {
           let stored: string | null = null
           try { stored = window.localStorage?.getItem(STORAGE_KEY) ?? null } catch { /* noop */ }
-          const matched = stored && withKeys.find(p => p.id === stored)
-          onChange(matched ? matched.id : withKeys[0].id)
+          // Respect an explicit "off" choice — stay local-only, don't auto-select.
+          if (stored !== OFF_VALUE) {
+            const matched = stored && withKeys.find(p => p.id === stored)
+            onChange(matched ? matched.id : withKeys[0].id)
+          }
         }
       } else {
         setError(result.error || 'Failed to load providers')
@@ -48,8 +54,9 @@ export const ProviderPicker: React.FC<ProviderPickerProps> = ({ value, onChange 
   const handleChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const next = event.target.value as ProviderId | ''
     if (!next) {
+      // "Off — local only": keep keys saved but disable LLM polishing/gist.
       onChange(null)
-      try { window.localStorage?.removeItem(STORAGE_KEY) } catch { /* noop */ }
+      try { window.localStorage?.setItem(STORAGE_KEY, OFF_VALUE) } catch { /* noop */ }
       return
     }
     onChange(next)
@@ -81,6 +88,7 @@ export const ProviderPicker: React.FC<ProviderPickerProps> = ({ value, onChange 
         onChange={handleChange}
         className="rounded-2xl border border-white/15 bg-white/5 px-3 py-1.5 text-sm text-white focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-400"
       >
+        <option value="" className="bg-slate-900">Off — local only</option>
         {providers.map(p => (
           <option key={p.id} value={p.id} className="bg-slate-900">
             {p.label} · {p.defaultModel}

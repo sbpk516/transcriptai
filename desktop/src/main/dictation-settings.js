@@ -2,9 +2,15 @@ const { app } = require('electron')
 const fs = require('fs')
 const path = require('path')
 
+// Default push-to-talk chord. "Option" is the macOS modifier; its Windows/Linux
+// equivalent is "Alt". CommandOrControl already maps to Cmd on macOS and Ctrl elsewhere.
+const DEFAULT_SHORTCUT = process.platform === 'darwin'
+  ? 'CommandOrControl+Option'
+  : 'CommandOrControl+Alt'
+
 const DEFAULT_SETTINGS = {
   enabled: false,
-  shortcut: 'CommandOrControl+Option',
+  shortcut: DEFAULT_SHORTCUT,
 }
 
 let cachedSettings = null

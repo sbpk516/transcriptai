@@ -15,14 +15,9 @@ class DebugHelper:
     """Helper class for debugging operations."""
     
     def __init__(self, debug_dir: str = "debug_logs"):
-        # Resolve a writable debug directory
-        data_dir = os.getenv("TRANSCRIPTAI_DATA_DIR")
-        if data_dir:
-            base = Path(data_dir) / "logs"
-        else:
-            # Fallback to user home if CWD is read-only (e.g., packaged app bundle)
-            base = Path.home() / "Library" / "Application Support" / "TranscriptAI" / "logs" if sys.platform == "darwin" else Path.cwd() / "logs"
-        self.debug_dir = base
+        # Resolve a writable debug directory (platform-appropriate; honors TRANSCRIPTAI_DATA_DIR)
+        from .native_libs import app_data_dir
+        self.debug_dir = app_data_dir("logs")
         try:
             self.debug_dir.mkdir(parents=True, exist_ok=True)
         except Exception:

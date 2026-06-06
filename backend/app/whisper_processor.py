@@ -7,6 +7,7 @@ import time
 import logging
 import requests
 import json
+import tempfile
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
@@ -404,7 +405,7 @@ class WhisperProcessor:
             return port
         
         # Strategy 2: Read from port file
-        data_dir = os.getenv("TRANSCRIPTAI_DATA_DIR", "/tmp")
+        data_dir = os.getenv("TRANSCRIPTAI_DATA_DIR") or tempfile.gettempdir()
         port_file = Path(data_dir) / "transcriptai_whisper_port"
         
         try:
@@ -557,9 +558,12 @@ class WhisperProcessor:
         logger.info(f"Loading model via {url}: {model_path}")
 
         try:
+            # whisper.cpp's /load endpoint expects a multipart form field named
+            # "model" (req.get_file_value("model")), NOT a JSON body. Sending JSON
+            # makes the server reject it with "400 - Invalid request".
             response = requests.post(
                 url,
-                json={"model": model_path},
+                files={"model": (None, model_path)},
                 timeout=120  # Model loading can take time
             )
             response.raise_for_status()

@@ -33,7 +33,9 @@ const PROVIDERS = Object.freeze([
     id: 'kimi',
     label: 'Moonshot (Kimi)',
     format: 'openai',
-    baseURL: 'https://api.moonshot.cn/v1',
+    // International platform endpoint (platform.moonshot.ai). The .cn endpoint is a
+    // separate system whose keys are NOT interchangeable with .ai keys.
+    baseURL: 'https://api.moonshot.ai/v1',
     defaultModel: 'moonshot-v1-8k',
   }),
   Object.freeze({
