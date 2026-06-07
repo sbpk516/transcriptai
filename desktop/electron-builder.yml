@@ -7,6 +7,10 @@ files:
     filter:
       - package.json
       - src/**
+      # Production dependencies (ai-sdk/zod/etc.) are required at runtime — without
+      # these the app crashes on launch ("Cannot find module 'zod/v4'").
+      # electron-builder automatically strips devDependencies.
+      - node_modules/**
 # Shared resources bundled on every platform. Native binaries are added
 # per-platform below (mac.extraResources / win.extraResources) so a DMG never
 # ships Windows DLLs and an NSIS installer never ships macOS dylibs.

@@ -28,7 +28,8 @@
     "ai": "^6.0.174",
     "node-global-key-listener": "^0.3.0",
     "semver": "^7.6.3",
-    "signal-exit": "^4.1.0"
+    "signal-exit": "^4.1.0",
+    "zod": "^4.4.2"
   },
   "devDependencies": {
     "@electron/notarize": "^3.1.1",
