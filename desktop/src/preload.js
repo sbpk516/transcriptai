@@ -376,3 +376,31 @@ contextBridge.exposeInMainWorld('transcriptaiLlm', {
   },
 })
 
+contextBridge.exposeInMainWorld('transcriptaiLicense', {
+  async getStatus() {
+    try {
+      return await ipcRenderer.invoke('license:get-status')
+    } catch (error) {
+      console.error('[Preload] license:get-status failed', error)
+      throw error
+    }
+  },
+  async activate(token) {
+    try {
+      if (typeof token !== 'string') throw new Error('Invalid token argument')
+      return await ipcRenderer.invoke('license:activate', { token })
+    } catch (error) {
+      console.error('[Preload] license:activate failed', error)
+      throw error
+    }
+  },
+  async openPurchase() {
+    try {
+      return await ipcRenderer.invoke('license:open-purchase')
+    } catch (error) {
+      console.error('[Preload] license:open-purchase failed', error)
+      throw error
+    }
+  },
+})
+

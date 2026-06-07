@@ -292,3 +292,6 @@ backend-cpp/models/*.onnx
 # backend-cpp/scripts/fetch-ffmpeg-win.ps1, never committed.
 backend-cpp/win/ffmpeg.exe
 backend-cpp/win/ffprobe.exe
+
+# License signing private key — NEVER commit (mints paid tokens)
+scripts/license/private-key.pem

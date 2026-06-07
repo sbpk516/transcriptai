@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react'
 import { Layout } from './components/Layout'
+import { LicenseGuard } from './modules/license/LicenseGuard'
 
 function App() {
   const appRenderStartTime = performance.now()
@@ -12,7 +13,11 @@ function App() {
   }, [])
   
   const layoutRenderStartTime = performance.now()
-  const result = <Layout />
+  const result = (
+    <LicenseGuard>
+      <Layout />
+    </LicenseGuard>
+  )
   const layoutRenderElapsed = performance.now() - layoutRenderStartTime
   const appRenderElapsed = performance.now() - appRenderStartTime
   console.log('[WEB_APP] phase=layout_render elapsed=' + layoutRenderElapsed.toFixed(2) + 'ms')

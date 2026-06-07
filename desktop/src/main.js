@@ -62,6 +62,7 @@ const recordingIndicatorWindow = require('./main/recording-indicator-window')
 const byokStore = require('./main/byok-store')
 const byokProviders = require('./main/byok-providers')
 const llmRouter = require('./main/llm-router')
+const licenseManager = require('./main/license-manager')
 // macOS-only native permissions module. Listed as an optionalDependency so
 // `npm install` on Windows/Linux does not fail building a macOS-only native addon.
 let macPermissions = null
@@ -983,6 +984,15 @@ app.on('ready', async () => {
   const launchStartTimestamp = new Date().toISOString()
   logLine('[LAUNCH] phase=electron_ready timestamp=' + launchStartTimestamp)
 
+  // Initialize trial/license store on every launch (sets trial start on first run,
+  // detects clock tampering). Non-fatal if it fails.
+  try {
+    const licenseStatus = licenseManager.init()
+    logLine('license_init', licenseStatus)
+  } catch (e) {
+    logLine('license_init_error', e.message)
+  }
+
   // Set dock icon IMMEDIATELY on macOS (before any other initialization)
   if (process.platform === 'darwin' && app.dock) {
     try {
@@ -1336,6 +1346,39 @@ function buildProviderStatusList() {
     hasKey: stored[p.id] === true,
   }))
 }
+
+// ---------- License / trial ----------
+
+ipcMain.handle('license:get-status', async () => {
+  try {
+    return { ok: true, ...licenseManager.getStatus() }
+  } catch (error) {
+    logLine('license_get_status_error', error.message)
+    return { ok: false, error: error.message }
+  }
+})
+
+ipcMain.handle('license:activate', async (_event, payload) => {
+  try {
+    const token = payload && typeof payload.token === 'string' ? payload.token : ''
+    const result = licenseManager.activate(token)
+    logLine('license_activate', { ok: result.ok })
+    return result
+  } catch (error) {
+    logLine('license_activate_error', error.message)
+    return { ok: false, error: error.message }
+  }
+})
+
+ipcMain.handle('license:open-purchase', async () => {
+  try {
+    await shell.openExternal(licenseManager.PURCHASE_URL)
+    return { ok: true }
+  } catch (error) {
+    logLine('license_open_purchase_error', error.message)
+    return { ok: false, error: error.message }
+  }
+})
 
 ipcMain.handle('byok:list', async () => {
   try {
