@@ -14,6 +14,16 @@ import time
 from typing import Optional
 from datetime import datetime
 
+# Force UTF-8 on stdout/stderr. On Windows the console/pipe defaults to cp1252,
+# which cannot encode the emoji used in our log/print statements (📁 ✅ 🚀 …) and
+# crashes the packaged backend at startup with UnicodeEncodeError. Reconfigure
+# BEFORE any print or before importing app code (so logging handlers inherit it).
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 try:
     import uvicorn
 except ImportError as e:
